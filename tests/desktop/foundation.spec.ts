@@ -33,7 +33,7 @@ test('real Electron foundation: themes, local files, cache, bounded ranges, isol
 
     await page.getByRole('button', { name: /Login/ }).click()
     await expect(page.getByRole('dialog')).toContainText('Firebase')
-    await expect(page.getByRole('dialog')).toContainText('does not collect credentials')
+    await expect(page.getByRole('dialog')).toContainText('Firebase is not configured')
     await page.getByRole('button', { name: 'Got it' }).click()
     await page.getByRole('button', { name: 'Appearance and settings' }).click()
     await page.getByRole('button', { name: 'Dark', exact: true }).click()

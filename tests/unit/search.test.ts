@@ -1,10 +1,27 @@
 import { describe, expect, it } from 'vitest'
-import { compileQuery, matchesFilters } from '../../src/workers/search'
+import { compileQuery, literalHighlightSpans, matchesFilters } from '../../src/workers/search'
 import { parseLogLine } from '../../src/workers/logCore'
-import { validateSearch, validateRange, validateLocate } from '../../src/main/validation'
+import { validateSearch, validateRange, validateLocate, validateFind, validateFindMatch } from '../../src/main/validation'
 
 const row = { ...parseLogLine('10-24 12:01:02.123  1423  1560 W Payment: response delayed'), line: 1 }
 describe('expression search', () => {
+  it('counts all literal occurrences independently of the drawing cap and preserves Unicode offsets', () => {
+    expect(literalHighlightSpans('a'.repeat(405), ['a'], false)).toHaveLength(400)
+    expect(literalHighlightSpans('a'.repeat(405), ['a'], false, Infinity)).toHaveLength(405)
+    expect(literalHighlightSpans('İ needle\nNEEDLE', ['needle'], false, Infinity)).toEqual([{ start: 2, end: 8 }, { start: 9, end: 15 }])
+    expect(literalHighlightSpans('needle NEEDLE', ['needle'], true, Infinity)).toEqual([{ start: 0, end: 6 }])
+  })
+  it('validates independent find IPC and occurrence navigation', () => {
+    const request = { id: 'tab', query: 'needle', caseSensitive: false, columns: ['message'], searchVersion: 1 }
+    expect(validateFind(request)).toEqual(request)
+    for (const extra of [{ query: '' }, { query: 'x'.repeat(2001) }, { caseSensitive: 1 }, { columns: ['raw'] }, { columns: [] }, { searchVersion: 0 }]) {
+      expect(() => validateFind({ ...request, ...extra })).toThrow()
+    }
+    expect(validateFindMatch({ id: 'tab', version: 1, ordinal: 401 }).ordinal).toBe(401)
+    for (const extra of [{ version: 0 }, { ordinal: 0 }, { ordinal: 1.2 }, { emv: 'yes' }]) {
+      expect(() => validateFindMatch({ id: 'tab', version: 1, ordinal: 1, ...extra })).toThrow()
+    }
+  })
   it('honors precedence, grouping, implicit AND and field phrases', () => {
     expect(compileQuery('(tag:Payment OR tag:Network) AND NOT level:D', false)(row)).toBe(true)
     expect(compileQuery('pid:1423 "response delayed"', false)(row)).toBe(true)

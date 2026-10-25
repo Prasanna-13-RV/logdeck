@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "companyId": "example-company",
+  "version": 1,
+  "name": "Synthetic company reference",
+  "tags": [
+    {
+      "tag": "DF8101",
+      "name": "Synthetic company status",
+      "description": "Example only. Replace with an authorized company definition.",
+      "bytes": 2
+    },
+    {
+      "tag": "9F33",
+      "name": "Company capability reference",
+      "description": "Example company context shown alongside the bundled global definition.",
+      "bytes": 3
+    }
+  ]
+}

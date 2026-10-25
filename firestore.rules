@@ -1,0 +1,53 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function member(company) {
+      return request.auth != null
+        && get(/databases/$(database)/documents/companies/$(company)/members/$(request.auth.uid)).data.active == true
+        && get(/databases/$(database)/documents/companies/$(company)/members/$(request.auth.uid)).data.role in ['member', 'admin'];
+    }
+    function admin(company) {
+      return member(company)
+        && get(/databases/$(database)/documents/companies/$(company)/members/$(request.auth.uid)).data.role == 'admin';
+    }
+    function positiveVersion(version) {
+      return version is int && version > 0 && version <= 9007199254740991;
+    }
+    function advancing(company, version) {
+      return !exists(/databases/$(database)/documents/companies/$(company)/catalog/current)
+        || get(/databases/$(database)/documents/companies/$(company)/catalog/current).data.version < version;
+    }
+    match /companies/{company}/members/{uid} {
+      allow get: if request.auth != null && request.auth.uid == uid;
+      allow list, write: if false;
+    }
+    match /companies/{company}/packs/{versionId} {
+      allow get: if member(company);
+      allow list, update, delete: if false;
+      allow create: if admin(company)
+        && request.resource.data.keys().hasOnly(['companyId', 'version', 'json'])
+        && request.resource.data.companyId == company
+        && positiveVersion(request.resource.data.version)
+        && versionId == string(request.resource.data.version)
+        && request.resource.data.json is string
+        && request.resource.data.json.size() > 0
+        && request.resource.data.json.size() <= 512000
+        && advancing(company, request.resource.data.version)
+        && getAfter(/databases/$(database)/documents/companies/$(company)/catalog/current).data.version == request.resource.data.version;
+    }
+    match /companies/{company}/catalog/current {
+      allow get: if member(company);
+      allow list, delete: if false;
+      allow create, update: if admin(company)
+        && request.resource.data.keys().hasOnly(['version'])
+        && positiveVersion(request.resource.data.version)
+        && advancing(company, request.resource.data.version)
+        && !exists(/databases/$(database)/documents/companies/$(company)/packs/$(request.resource.data.version))
+        && getAfter(/databases/$(database)/documents/companies/$(company)/packs/$(request.resource.data.version)).data.companyId == company
+        && getAfter(/databases/$(database)/documents/companies/$(company)/packs/$(request.resource.data.version)).data.version == request.resource.data.version;
+    }
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

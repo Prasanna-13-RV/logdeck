@@ -1,11 +1,15 @@
-import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, type IpcMainInvokeEvent } from 'electron'
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, shell, type IpcMainInvokeEvent } from 'electron'
 import { basename, extname, isAbsolute, join, resolve } from 'node:path'
 import { mkdir, realpath, writeFile } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
 import { FileWorker } from './workerClient'
-import { sessionId, validateRange, validateSegment, validateSearch, validateLocate, validateExport, validateClipboard } from './validation'
+import { sessionId, validateRange, validateSegment, validateSearch, validateLocate, validateExport, validateClipboard, validateFind, validateFindMatch } from './validation'
 import { TextFiles } from './textFiles'
-import type { LogRow, Result, SessionInfo, SearchInfo, ExportInfo, CacheInfo } from '../../shared/contracts'
+import { CompanyTags } from './companyTags'
+import { changeWindowsIntegration, windowsIntegrationInfo } from './windowsIntegration'
+import { firebaseConfig } from '../../shared/firebaseTags'
+import { checkRelease, releaseConfiguration, startupReleaseCheck } from '../../shared/releases'
+import type { FindMatch, LogRow, Result, SessionInfo, SearchInfo, ExportInfo, CacheInfo } from '../../shared/contracts'
 
 const windows = new Map<number, BrowserWindow>()
 const sessions = new Map<string, { owner: number; info: SessionInfo; path: string }>()
@@ -15,6 +19,9 @@ const busy = new Set<number>()
 const rangeJobs = new Map<number, number>()
 const activeSessions = new Map<number, string>()
 let files: FileWorker
+let companyTags: CompanyTags
+declare const __LOGDECK_FIREBASE__: { apiKey: string; projectId: string }
+declare const __LOGDECK_RELEASE__: { manifestUrl: string; websiteUrl: string }
 
 if (process.env.LOGDECK_TEST_USER_DATA) app.setPath('userData', process.env.LOGDECK_TEST_USER_DATA)
 app.setName('LogDeck')
@@ -48,6 +55,7 @@ function ipc<T>(channel: string, handler: (event: IpcMainInvokeEvent, payload: u
 async function closeSession(id: string) {
   const entry = sessions.get(id)
   if (!entry) return
+  for (const child of [...sessions.values()].filter(value => value.info.splitParentId === id)) await closeSession(child.info.id)
   await files.request('close', id)
   sessions.delete(id)
   if (activeSessions.get(entry.owner) === id) activeSessions.delete(entry.owner)
@@ -55,7 +63,7 @@ async function closeSession(id: string) {
   if (window && !window.isDestroyed()) window.webContents.send('files:closed', id)
 }
 
-async function openForWindow(window: BrowserWindow, input: string, synthetic = false) {
+async function openForWindow(window: BrowserWindow, input: string, synthetic = false, splitParentId?: string) {
   const owner = window.webContents.id
   if (busy.has(owner)) throw new Error('A file is already opening in this window.')
   if ([...sessions.values()].filter(entry => entry.owner === owner).length >= 12) {
@@ -70,17 +78,17 @@ async function openForWindow(window: BrowserWindow, input: string, synthetic = f
     // Register before opening so early worker progress is attributed to its owner.
     const pending: SessionInfo = {
       id, name: basename(path), size: 0, lines: 0, indexedBytes: 0,
-      status: 'indexing', synthetic, cacheHit: false
+      status: 'indexing', synthetic, cacheHit: false, splitParentId
     }
     sessions.set(id, { owner, info: pending, path })
     const info = await files.request<SessionInfo>('open', id, { path, name: basename(path), synthetic })
-    if (window.isDestroyed()) {
+    if (window.isDestroyed() || (splitParentId && !sessions.has(splitParentId))) {
       await closeSession(id)
-      throw new Error('The receiving window closed.')
+      throw new Error('The receiving window or split tab closed.')
     }
     const entry = sessions.get(id)!
-    if (entry.info.size === 0 && entry.info.lines === 0) entry.info = info
-    activeSessions.set(owner, id)
+    if (entry.info.size === 0 && entry.info.lines === 0) entry.info = { ...info, splitParentId }
+    if (!splitParentId) activeSessions.set(owner, id)
     window.webContents.send('files:progress', entry.info)
     return entry.info
   } catch (error) {
@@ -131,6 +139,7 @@ async function createWindow(initialPath?: string) {
   window.webContents.on('will-navigate', event => event.preventDefault())
   window.webContents.session.setPermissionRequestHandler((_contents, _permission, callback) => callback(false))
   window.on('closed', () => {
+    companyTags.close(owner)
     textFiles.close(owner)
     windows.delete(owner)
     activeSessions.delete(owner)
@@ -167,6 +176,39 @@ async function createWindow(initialPath?: string) {
 }
 
 function registerIpc() {
+  ipc('windows:integration-info', async () => windowsIntegrationInfo())
+  ipc('windows:integration-change', async (event, action) => {
+    if (action !== 'register' && action !== 'remove') throw new Error('Invalid Windows integration action.')
+    const info = await windowsIntegrationInfo()
+    if (!info.available) throw new Error('Use the packaged Windows app to configure Open with.')
+    const result = await dialog.showMessageBox(ownedWindow(event), {
+      type: 'question',
+      message: action === 'register' ? 'Enable Open with LogDeck for this Windows account?' : 'Remove LogDeck from Open with for this Windows account?',
+      detail: `This does not change default apps or require administrator rights.\nEXE: ${info.executablePath}\nAfter moving or replacing the EXE, register the new location again.`,
+      buttons: ['Cancel', action === 'register' ? 'Enable' : 'Remove'], defaultId: 0, cancelId: 0
+    })
+    return result.response === 1 ? changeWindowsIntegration(action) : info
+  })
+  const release = releaseConfiguration(__LOGDECK_RELEASE__.manifestUrl, __LOGDECK_RELEASE__.websiteUrl)
+  const startupCheck = startupReleaseCheck(release, app.getVersion())
+  ipc('updates:startup', async () => startupCheck())
+  ipc('updates:info', async () => ({ configured: release !== null, currentVersion: app.getVersion() }))
+  ipc('updates:check', async () => {
+    if (!release) throw new Error('Release checks are not configured. Ask the LogDeck administrator to configure the official website URLs.')
+    return checkRelease(release, app.getVersion())
+  })
+  ipc('updates:open-download', async () => {
+    if (!release) throw new Error('The official LogDeck website is not configured.')
+    await shell.openExternal(new URL('/download', release.websiteUrl).href)
+  })
+  ipc('company:status', async event => companyTags.status(event.sender.id))
+  ipc('company:sign-in', async (event, value) => companyTags.signIn(event.sender.id, value))
+  ipc('company:sign-out', async event => companyTags.signOut(event.sender.id))
+  ipc('company:download', async (event, value) => {
+    const result = await companyTags.download(event.sender.id, value, pack => files.request('company-tags', '', { companyPack: pack }))
+    for (const window of windows.values()) window.webContents.send('company:changed')
+    return result
+  })
   ipc('files:pick', async event => {
     const window = ownedWindow(event)
     const result = await dialog.showOpenDialog(window, {
@@ -175,6 +217,23 @@ function registerIpc() {
     })
     if (result.canceled || !result.filePaths[0]) return null
     return openForWindow(window, result.filePaths[0])
+  })
+  ipc('files:pick-split', async (event, value) => {
+    const id = sessionId(value)
+    const parent = ownedSession(event, id)
+    if (parent.info.splitParentId) throw new Error('Open the split from its primary file tab.')
+    const previous = [...sessions.values()].find(entry => entry.info.splitParentId === id)
+    const window = ownedWindow(event)
+    const result = await dialog.showOpenDialog(window, {
+      title: 'Open another log in split view', properties: ['openFile'],
+      filters: [{ name: 'Log files', extensions: ['log', 'logcat'] }]
+    })
+    if (result.canceled || !result.filePaths[0]) return null
+    ownedSession(event, id)
+    if ([...sessions.values()].find(entry => entry.info.splitParentId === id)?.info.id !== previous?.info.id) throw new Error('The split changed while choosing a file. Try again.')
+    const info = await openForWindow(window, result.filePaths[0], false, id)
+    if (previous) await closeSession(previous.info.id)
+    return info
   })
   ipc('files:drop', async (event, path) => {
     if (typeof path !== 'string') throw new Error('Invalid dropped file.')
@@ -225,6 +284,26 @@ function registerIpc() {
     ownedSession(event, id)
     return files.request<SearchInfo>('search-status', id)
   })
+  ipc('files:find', async (event, value) => {
+    const request = validateFind(value)
+    ownedSession(event, request.id)
+    return files.request<SearchInfo>('find', request.id, { find: request })
+  })
+  ipc('files:find-status', async (event, value) => {
+    const id = sessionId(value)
+    ownedSession(event, id)
+    return files.request<SearchInfo>('find-status', id)
+  })
+  ipc('files:find-cancel', async (event, value) => {
+    const id = sessionId(value)
+    ownedSession(event, id)
+    await files.request('find-cancel', id)
+  })
+  ipc('files:find-match', async (event, value) => {
+    const request = validateFindMatch(value)
+    ownedSession(event, request.id)
+    return files.request<FindMatch>('find-match', request.id, request)
+  })
   ipc('files:search-cancel', async (event, value) => {
     const id = sessionId(value)
     ownedSession(event, id)
@@ -240,7 +319,7 @@ function registerIpc() {
     const source = ownedSession(event, id)
     if ([...sessions.values()].filter(entry => entry.owner === event.sender.id).length >= 12) throw new Error('Close a file or split before creating another view (12 per window).')
     const newId = randomUUID()
-    const info = await files.request<SessionInfo>('duplicate', id, { newId })
+    const info = { ...await files.request<SessionInfo>('duplicate', id, { newId }), splitParentId: id }
     sessions.set(newId, { owner: event.sender.id, path: source.path, info })
     return info
   })
@@ -296,20 +375,21 @@ function registerIpc() {
 const hasLock = app.requestSingleInstanceLock()
 if (!hasLock) app.quit()
 else {
+  let startup: Promise<void>
   app.on('second-instance', (_event, argv) => {
     const path = argv.find(value => ['.log', '.logcat'].includes(extname(value).toLowerCase()))
-    void createWindow(path).catch(error => dialog.showErrorBox('Could not open LogDeck', String(error)))
+    void startup.then(() => createWindow(path ? resolve(path) : undefined)).catch(error => dialog.showErrorBox('Could not open LogDeck', String(error)))
   })
-  void app.whenReady().then(async () => {
+  startup = app.whenReady().then(async () => {
     Menu.setApplicationMenu(null)
     const cacheRoot = process.env.LOGDECK_TEST_USER_DATA ??
       join(process.env.LOCALAPPDATA || app.getPath('userData'), 'LogDeck')
     files = new FileWorker(join(cacheRoot, 'indexes'), info => {
       const entry = sessions.get(info.id)
       if (!entry) return
-      entry.info = info
+      entry.info = { ...info, splitParentId: entry.info.splitParentId }
       const window = windows.get(entry.owner)
-      if (window && !window.isDestroyed()) window.webContents.send('files:progress', info)
+      if (window && !window.isDestroyed()) window.webContents.send('files:progress', entry.info)
     }, error => {
       console.error('File worker stopped:', error.message)
       for (const entry of sessions.values()) {
@@ -318,6 +398,10 @@ else {
         if (window && !window.isDestroyed()) window.webContents.send('files:progress', entry.info)
       }
     })
+    companyTags = new CompanyTags(join(app.getPath('userData'), 'company-emv-tags.json'),
+      firebaseConfig(__LOGDECK_FIREBASE__.apiKey, __LOGDECK_FIREBASE__.projectId))
+    await companyTags.load()
+    await files.request('company-tags', '', { companyPack: companyTags.status(0).installed })
     registerIpc()
     const path = process.argv.find(value => ['.log', '.logcat'].includes(extname(value).toLowerCase()))
     await createWindow(path ? resolve(path) : undefined)

@@ -6,7 +6,7 @@ type Predicate = (row: RecordFields) => boolean
 interface Token { value: string; kind: 'word' | 'literal' | 'symbol' }
 const fields = new Set(['raw', 'time', 'pid', 'tid', 'level', 'tag', 'message', 'app', 'process', 'line'])
 
-export function literalHighlightSpans(text: string, terms: string[], caseSensitive: boolean) {
+export function literalHighlightSpans(text: string, terms: string[], caseSensitive: boolean, limit = 400) {
   const haystack = caseSensitive ? text : text.toLowerCase()
   const offsets: { start: number; end: number }[] = []
   if (haystack.length !== text.length) {
@@ -21,11 +21,11 @@ export function literalHighlightSpans(text: string, terms: string[], caseSensiti
     if (!term) continue
     const needle = caseSensitive ? term : term.toLowerCase()
     let found = haystack.indexOf(needle)
-    while (found >= 0 && spans.length < 400) {
+    while (found >= 0 && spans.length < limit) {
       spans.push({ start: offsets[found]?.start ?? found, end: offsets[found + needle.length - 1]?.end ?? found + needle.length })
       found = haystack.indexOf(needle, found + needle.length)
     }
-    if (spans.length >= 400) break
+    if (spans.length >= limit) break
   }
   return spans.sort((a, b) => a.start - b.start || a.end - b.end)
 }

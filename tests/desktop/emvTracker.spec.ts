@@ -2,6 +2,7 @@ import { test, expect, _electron as electron } from '@playwright/test'
 import { mkdtemp, writeFile, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
+import { expectFilterResults } from './viewerAssertions'
 
 test('automatic offline EMV highlighting, definition/value states, editing handoff and independent views', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'logdeck-emv-'))
@@ -56,14 +57,16 @@ test('automatic offline EMV highlighting, definition/value states, editing hando
     await panel.getByRole('button', { name: 'Inspect EMV tag DF01', exact: true }).click()
     await expect(inspector).toContainText('Unknown tag')
 
-    await panel.getByLabel('Filter expression', { exact: true }).fill('"Tag 95"')
+    await panel.getByLabel('Regex filter', { exact: true }).fill('Tag 95')
     await panel.getByRole('button', { name: 'Apply filters', exact: true }).click()
-    await expect(panel.getByRole('status').filter({ hasText: 'matching records' })).toContainText('Complete')
+    await expectFilterResults(page, opened.value.id, 2)
     await expect(panel.locator('mark')).toHaveCount(0)
+    await page.keyboard.press('Control+f')
     await panel.getByLabel('Search logs', { exact: true }).fill('Tag 95')
-    await panel.getByRole('button', { name: 'Search', exact: true }).click()
+    await expect(panel.getByRole('search').getByRole('status')).toHaveText('1 of 2 matches')
     await expect(panel.locator('tbody tr').first().locator('mark')).toHaveText(['Tag ', '95'])
     await panel.getByRole('button', { name: 'Wrap all columns' }).click()
+    await panel.getByRole('button', { name: 'Close find', exact: true }).click()
     await panel.getByRole('button', { name: 'Inspect EMV tag 95', exact: true }).first().click()
     await inspector.getByRole('button', { name: 'Open value in EMV editor' }).click()
     await expect(panel.getByLabel('EMV tag', { exact: true })).toHaveValue('95')
@@ -74,7 +77,7 @@ test('automatic offline EMV highlighting, definition/value states, editing hando
     await panel.getByRole('button', { name: 'Track EMV tags' }).click()
     await expect(panel.locator('.emv-tag')).toHaveCount(0)
     await expect(panel.getByRole('complementary', { name: 'EMV tag definition' })).toHaveCount(0)
-    await panel.getByRole('button', { name: 'Clear filters', exact: true }).click()
+    await panel.getByRole('button', { name: 'Reset filters', exact: true }).click()
     await panel.getByRole('button', { name: 'Split view', exact: true }).click()
     const primary = panel.locator('.split-pane').nth(0)
     const secondary = panel.locator('.split-pane').nth(1)

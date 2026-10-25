@@ -9,9 +9,10 @@ Beyond Compare-style two-pane editable text tool.
 Later phases: FR-016, FR-027/028, FR-036-039, FR-045/046/048/049,
 FR-050-053, and FR-056. These remain roadmap requirements, not release-1
 dependencies. FR-037/039/068 apply when database updates are introduced.
-FR-047 privacy applies from release 1. Hide unavailable account/cloud controls,
-except the explicitly labeled future Firebase Login explanation.
-The [release experience specification](spec.md) adds REQ-001 through REQ-030 for
+FR-047 privacy applies from release 1. The optional company-tag increment implements
+email/password access, admin publication and manual versioned downloads, not the
+full database/auth roadmap. Unconfigured cloud controls are explicitly disabled.
+The [release experience specification](spec.md) adds REQ-001 through REQ-035 for
 the clarified UI, advanced queries, split views, exports, and working increments.
 See [the consolidated specification](LogDeck-technical-documentation.md) for
 performance targets and edge-case behavior.
@@ -65,8 +66,9 @@ When opened normally, LogDeck displays a home page with:
 - Compare
 - Settings
 
-Navbar includes Login labeled "Coming later", opening an explanatory future-Firebase
-dialog. Actual authentication is added only in the later cloud/auth phase.
+Navbar includes Login for optional company-tag authentication. Credentials and
+downloads are disabled until Firebase is configured; all local viewing works
+without login. See [setup and pack schema](Firebase-and-website-setup.md).
 
 ---
 
@@ -198,22 +200,19 @@ severity styling in both themes, raw-text fallback, and wrapped message details.
 
 ## FR-018: Search Syntax
 
-Support syntax concepts such as:
+The viewer uses regex by default and exposes no expression-mode selector.
+Support JavaScript Unicode regex syntax such as:
 
 ```text
-tag:MCEMV
-level:E
-pid:844
-message:timeout
+MCEMV
+Payment|Network
+Core\.(?!Dal)
+message.*timeout
 ```
 
-Queries can combine multiple terms.
-
-Default logical behavior is AND.
-
-Explicit precedence is parentheses, NOT, AND, OR. Adjacent clauses imply AND.
-Uppercase operators are reserved; quoted text is literal. Invalid/unknown syntax
-must show an error. Regex mode and expression mode are clearly distinguished.
+Enter applies the regex together with the advanced filters. Invalid regex
+must show an error. Existing expression presets remain stored but must display
+a legacy warning rather than be applied as regex.
 Device/package/app fields are enabled only when trustworthy metadata is available.
 
 ---
@@ -228,7 +227,7 @@ Highlighting must not require scanning/rendering the entire DOM.
 
 ## FR-020: Advanced Filters
 
-The left sidebar must support:
+The top filter bar and collapsible More filters section must support:
 
 - Level
 - Tag
@@ -245,7 +244,7 @@ The left sidebar must support:
 
 ## FR-021: Filter Combination
 
-The complete query expression combines with sidebar filter categories by AND;
+The regex combines with advanced filter categories by AND;
 multiple selected values within a category combine by OR; excludes remove matches.
 
 ---

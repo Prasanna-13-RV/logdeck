@@ -1,6 +1,6 @@
 {
   "name": "logdeck",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "Local-first desktop log viewer",
   "main": "out/main/index.js",
@@ -8,9 +8,17 @@
     "dev": "electron-vite dev",
     "typecheck": "tsc --noEmit",
     "build": "npm run typecheck && electron-vite build",
+    "release": "node scripts/release.mts",
+    "release:ci": "node scripts/release.mts --ci",
     "start": "electron .",
+    "dev:website": "vite --config website/vite.config.mts",
+    "build:website": "npm run typecheck && vite build --config website/vite.config.mts",
+    "preview:website": "vite preview --config website/vite.config.mts --host 127.0.0.1 --port 5174",
     "test": "vitest run",
     "test:desktop": "playwright test",
+    "test:website": "playwright test --config playwright.website.config.ts",
+    "test:rules": "firebase emulators:exec --only firestore --project demo-logdeck \"npm run test:rules:run\"",
+    "test:rules:run": "vitest run --config vitest.rules.config.mts",
     "postinstall": "node node_modules/electron/install.js"
   },
   "dependencies": {
@@ -34,6 +42,7 @@
     "@vitejs/plugin-react": "^6.0.0",
     "electron": "45.0.0",
     "electron-vite": "6.0.0",
+    "electron-builder": "26.18.0",
     "typescript": "^5.9.3",
     "vite": "8.3.5",
     "vitest": "5.0.5"

@@ -1,5 +1,15 @@
 import type { EmvTracking } from './emvTracker'
 import type { PositionRange } from './selection'
+import type { CompanyTagPack } from './companyTags'
+import type { UpdateCheckResult, UpdatePageInfo } from './releases'
+import type { WindowsIntegrationInfo } from './windowsIntegration'
+
+export interface CompanyTagStatus {
+  configured: boolean
+  account: { email: string; uid: string } | null
+  installed: CompanyTagPack | null
+  notice: string
+}
 
 export type Theme = 'dark' | 'light' | 'system'
 export type LogLevel = 'V' | 'D' | 'I' | 'W' | 'E' | 'F' | 'A' | ''
@@ -25,6 +35,7 @@ export interface LogRow {
 
 export interface SessionInfo {
   id: string
+  splitParentId?: string
   name: string
   size: number
   lines: number
@@ -49,6 +60,10 @@ export interface SearchFilters {
   to?: string
 }
 export interface SearchRequest { id: string; query: string; caseSensitive: boolean; filters: SearchFilters; mode?: 'expression' | 'regex' }
+export const findColumns = ['line', 'time', 'pid', 'tid', 'level', 'tag', 'message'] as const
+export type FindColumn = typeof findColumns[number]
+export interface FindRequest { id: string; query: string; caseSensitive: boolean; columns: FindColumn[]; searchVersion?: number }
+export interface FindMatch { position: number; column: FindColumn; start: number; end: number; row: LogRow }
 export interface ExportRequest { id: string; searchVersion?: number; start?: number; end?: number; ranges?: PositionRange[] }
 export interface ExportInfo {
   status: 'running' | 'ready' | 'cancelled' | 'error'
@@ -72,6 +87,7 @@ export type Result<T> = { ok: true; value: T } | { ok: false; error: string }
 
 export interface DesktopApi {
   openFile: () => Promise<Result<SessionInfo | null>>
+  openSplitFile: (parentId: string) => Promise<Result<SessionInfo | null>>
   openDroppedFile: (path: string) => Promise<Result<SessionInfo>>
   pathForFile: (file: File) => string
   openDemo: () => Promise<Result<SessionInfo>>
@@ -86,11 +102,26 @@ export interface DesktopApi {
   startSearch: (request: SearchRequest) => Promise<Result<SearchInfo>>
   searchStatus: (id: string) => Promise<Result<SearchInfo>>
   cancelSearch: (id: string) => Promise<Result<void>>
+  startFind: (request: FindRequest) => Promise<Result<SearchInfo>>
+  findStatus: (id: string) => Promise<Result<SearchInfo>>
+  cancelFind: (id: string) => Promise<Result<void>>
+  findMatch: (request: { id: string; version: number; ordinal: number; emv?: boolean }) => Promise<Result<FindMatch>>
   locate: (request: { id: string; line: number; searchVersion: number }) => Promise<Result<number | null>>
   duplicateSession: (id: string) => Promise<Result<SessionInfo>>
   exportRecords: (request: ExportRequest) => Promise<Result<ExportInfo | null>>
   copyRecords: (request: ExportRequest) => Promise<Result<string>>
   writeClipboard: (text: string) => Promise<Result<void>>
+  companyTagStatus: () => Promise<Result<CompanyTagStatus>>
+  companySignIn: (email: string, password: string) => Promise<Result<CompanyTagStatus>>
+  companySignOut: () => Promise<Result<CompanyTagStatus>>
+  downloadCompanyTags: (companyId: string) => Promise<Result<CompanyTagStatus>>
+  onCompanyTagsChanged: (listener: () => void) => () => void
+  updatePageInfo: () => Promise<Result<UpdatePageInfo>>
+  checkForUpdates: () => Promise<Result<UpdateCheckResult>>
+  startupUpdateCheck: () => Promise<Result<UpdateCheckResult | null>>
+  openDownloadPage: () => Promise<Result<void>>
+  windowsIntegrationInfo: () => Promise<Result<WindowsIntegrationInfo>>
+  changeWindowsIntegration: (action: 'register' | 'remove') => Promise<Result<WindowsIntegrationInfo>>
   exportStatus: (id: string) => Promise<Result<ExportInfo>>
   cancelExport: (id: string) => Promise<Result<void>>
   cacheInfo: () => Promise<Result<CacheInfo>>

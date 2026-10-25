@@ -1,0 +1,43 @@
+name: Publish portable Windows release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.22.0'
+          cache: npm
+      - run: npm ci
+      - name: Validate tag, build and smoke-test packaged runtimes
+        run: npm run release:ci
+        env:
+          CSC_LINK: ${{ secrets.WINDOWS_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CSC_KEY_PASSWORD }}
+          VITE_FIREBASE_API_KEY: ${{ vars.VITE_FIREBASE_API_KEY }}
+          VITE_FIREBASE_PROJECT_ID: ${{ vars.VITE_FIREBASE_PROJECT_ID }}
+      - name: Publish tested EXE, checksum and manifest together
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = (Get-Content package.json | ConvertFrom-Json).version
+          $folder = "release\$version"
+          gh release create "v$version" "$folder\LogDeck-$version-windows-x64.exe" "$folder\SHA256SUMS.txt" "$folder\windows.json" --verify-tag --title "LogDeck $version" --notes-file "$folder\release-notes.txt" --draft
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          gh release edit "v$version" --draft=false --latest
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

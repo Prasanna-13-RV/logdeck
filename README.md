@@ -32,18 +32,23 @@ Electron and requires network access; normal local file viewing does not.
 - Light, dark, and system themes with persisted appearance and reduced motion.
 - Read-only saved-file viewing with worker-owned SQLite byte-offset indexes.
 - Virtualized Time / PID / TID / Level / Tag / Message table.
-- Collapsible filter/regex sidebar and bounded complete-record copying.
+- Collapsible top-bar regex filters, advanced controls and bounded complete-record copying; no file sidebar.
 - Entire-table horizontal scroll or optional all-column, measured row wrapping.
 - Row clicks select; they do not open a Message Details panel.
 - Go-to-line/record and segmented navigation to avoid huge browser scroll areas.
 - The bottom position indicator follows actual scrolling as well as slider dragging.
 - Chrome-style file/home/tool tabs; active filename updates the native window title.
 - Each file tab keeps its query, filters, wrap mode, selection and vertical position.
-- Worker-backed AND/OR/NOT filtering, separate top-bar highlight-only search, matching-record navigation,
+- Worker-backed regex filtering (Enter to apply), separate Ctrl+F find popup with full filtered-result occurrence counts,
+  Enter/Shift+Enter and F3/Shift+F3 navigation with wraparound,
   cancellation, explicit errors, and partial/complete counts.
 - Isolated, watchdog-protected regex filtering; persisted severity text/row-background styles.
-- Persistent column visibility/order/width, named query/filter presets, and
-  two independently filtered/scrolled panes of the same log, stacked top/bottom.
+- Persistent column visibility/order/width in Settings, named query/filter presets, and
+  two independently filtered/scrolled panes of the same or different logs, stacked top/bottom or side by side.
+- Embedded message newlines and receipt spacing remain visible even without word wrapping.
+- Hide navigation or viewer controls; hiding tabs also hides navigation. F11 toggles logs-only mode.
+  A top-right restore button stays available, and hidden viewer controls can be restored from the status bar.
+- Up/Down moves a single selected log through filtered records, including across wrapped pages.
 - Click-to-deselect, Ctrl/Meta multi-selection, continuous Shift-selection, bounded full-record copying, and cancellable
   full-record export of all, selected, or completed filtered results.
 - Lazy-loaded virtualized two-pane text Compare: line/word differences,
@@ -54,7 +59,92 @@ Electron and requires network access; normal local file viewing does not.
   offline definitions/value checks, per-view disable and supported-value editor handoff.
 - Index progress, cancellation/reopen, cache reuse, and independent windows.
 - Explicit errors for invalid input, unsupported encoding, and source changes.
-- Future Firebase login explanation; no credentials collected or fake login.
+- Matching public website: Home, Features, Download and an authenticated company-admin publishing page.
+- Optional Firebase email/password company sign-in, validated immutable company tag packs,
+  manual Settings downloads, offline caching and separate global/company definitions.
+  Cloud features remain disabled until you configure your Firebase project.
+- Desktop checks the configured official website's version/notes manifest once per app launch
+  and shows a nonblocking newer-version notice. The Updates page also supports manual checks. Downloads open
+  manually; the app never downloads or installs updates automatically.
+
+## Product website and company tags
+
+The website reuses the desktop's colors, typography, cards and light/dark themes.
+It has no log-upload control. Start it separately from Electron:
+
+```powershell
+npm.cmd run dev:website
+```
+
+Open `http://127.0.0.1:5174`. Production output is built with
+`npm.cmd run build:website`; `npm.cmd run preview:website` previews that output.
+
+**Global EMV definitions are bundled code:** 60 common definitions, dictionary
+version 1.1.0. They are not fetched live from the internet or an exhaustive global
+database. Explicit log syntax can recognize unknown tag IDs without adding each
+one to that dictionary.
+
+For proprietary definitions, an authorized administrator uploads a validated JSON
+pack on `/admin` and explicitly publishes a higher version. Authorized company users
+then click **Download EMV tags** in desktop Settings. Both global and company
+definitions appear when IDs overlap; company definitions never replace global
+meanings or add unverified bit decoders. Downloaded definitions work offline.
+
+Follow [Firebase and distribution setup](docs/Firebase-and-website-setup.md).
+No real Firebase project, Netlify site deployment or GitHub release has been
+published by this implementation. On Netlify the Download page reads the latest
+published stable GitHub release and its actual EXE SHA-256 digest. It stays
+unavailable if GitHub has no complete release or cannot be reached.
+
+The desktop checks the public release manifest once at startup without blocking log viewing.
+A newer version shows a notice with **View update** and **Download page**;
+failed checks show an explicit notice with **Retry in Updates**. The **Updates** tab
+also lets the user click **Check for updates**. Configure `VITE_WEBSITE_URL` and
+`VITE_UPDATE_MANIFEST_URL` in the desktop build environment; the manifest must be
+the same-origin HTTPS `/updates/windows.json`. Update its semantic version,
+publication date, and release notes when you publish a release. The app then
+compares that website version with its installed Electron app version. Review
+notes and use **Official download page** to update manually. No auto-download,
+installer replacement or periodic background polling is performed. Startup checks
+send no logs, credentials or company-tag content; unconfigured builds make no request.
+
+### Portable Windows releases
+
+Use Windows x64 and Node.js 22.18+ (22.22 recommended for parity with CI).
+Dependencies are pinned in the lockfile; run `npm ci` on a fresh checkout.
+
+```powershell
+npm.cmd run release
+# Optional release description / larger version step:
+npm.cmd run release -- --bump minor --notes "Describe this release."
+```
+
+The default increments the patch version, synchronizes the lockfile, runs unit
+tests/typecheck/build, packages a **single portable EXE**, launches both packaged
+entry points with a synthetic log and verifies SQLite, generates SHA-256 and release
+metadata, and builds the website. Output is `release/<version>/`; the distributable
+is `LogDeck-<version>-windows-x64.exe`. Nothing is committed, tagged, pushed or
+uploaded by this command. Failures restore the original version and manifest;
+failed artifacts remain for diagnosis. Move that exact version's artifact folder
+aside before retrying. The version increments only once per successful preparation.
+
+Review and commit all release source files, lockfile and public manifest first.
+Then create and push the matching `v<version>` tag. The
+[GitHub workflow](.github/workflows/release.yml) rebuilds/tests on Windows and
+publishes the EXE, checksum and metadata together. Generated EXEs stay gitignored;
+do not commit them. The Netlify website/app checks use the **published GitHub
+release**, not a possibly ahead-of-publication version on the main branch.
+See the exact publishing and Netlify setup steps in
+[the distribution guide](docs/Firebase-and-website-setup.md#6-portable-release-preparation-and-github-publication).
+
+Users save the EXE in a permanent folder and run it without a setup wizard.
+**Settings > Open with LogDeck** optionally registers `.log` and `.logcat` for
+that Windows account, after confirmation, without administrator rights or
+changing defaults. Windows Default apps controls the default selection.
+After moving or replacing the versioned EXE, enable the integration again; remove
+it before deleting LogDeck. Preferences/cache remain in the Windows account's
+app-data folders. Unsigned builds may show SmartScreen warnings; code signing
+requires your own publisher certificate.
 
 ## Supported formats
 
@@ -111,61 +201,72 @@ Tests include a 2-million-line synthetic file and both supplied local sample for
 
 ## Search and filters
 
-**Sidebar = filtering:** enter an expression or select Regex, then click **Apply filters**
-(Enter in the expression input also applies). Filters hide nonmatching records and
+**Top bar = filtering:** enter a JavaScript Unicode regex, then press Enter or **Apply filters**.
+Regex is the only UI query mode; do not include `/` delimiters.
+**More filters** expands levels, tag/PID/TID/application/time, include/exclude,
+severity, presets and file details above the logs. Filters hide nonmatching records and
 do not highlight text. Filter scans wait for indexing to finish.
 
-**Top bar = searching:** enter literal text and press Enter/**Search** to highlight
-visible occurrences without hiding records or changing the active filter. **Clear search**
-does not clear filters; **Clear filters / Reset filters** do not clear the top search.
-Search has its own case-sensitive checkbox and works on displayed text, not a separate
-whole-file occurrence index.
+**Ctrl+F = finding:** opens a top-right popup over the log area. Type literal text
+to count occurrences across visible columns in all filtered records, including
+off-screen records and repeated occurrences in one cell. It does not hide records
+or change the active filter or copy/export selection. Enter / F3 moves forward;
+Shift+Enter / Shift+F3 moves backward, wrapping at the ends. The popup shows the
+current occurrence and total, with an independent case-sensitive checkbox.
+**Clear search** does not clear filters; **Reset filters** preserves find text and
+recounts. Escape or the close button closes Find and releases its occurrence index.
 
 ```text
 timeout
-"response delayed"
-(tag:Payment OR tag:Network) AND NOT level:D
-pid:1423 tid:1560 message:timeout
-app:"example.application" process:payment
-Core. -tag:Core.Dal
+response delayed
+Payment|Network
+Core\.(?!Dal)
+record (?:1|3)$
 ```
 
-Precedence: parentheses, NOT, AND, OR. Adjacent terms imply AND. Operators must
-be uppercase; quote them for literal text. Quoted text supports `\"` and `\\`.
-Fields: `raw`, `message`, `tag`, `time`, `level`, `pid`, `tid`, `app`, `process`,
-and `line`. PID/TID/level/line match exactly; other fields use substring matching.
-Unfielded text searches the raw record (including raw JSON for structured input).
-Case sensitivity is explicit. `-tag:Core.Dal` is equivalent to `NOT tag:Core.Dal`;
-the same exclusion syntax works with other supported fields. Top-bar literal
-search highlights up to 400 occurrences per visible cell, retaining original Unicode
-offsets. Previous/Next match and F3 still navigate filtered records, not individual
-text occurrences.
+Regex matches the raw record, including raw JSON for structured input. Use More
+filters for PID/TID/level/tag/application constraints. Case sensitivity is explicit.
+Expression field syntax such as `tag:Payment AND NOT level:D` is retired in the UI.
+Saved expression presets remain intact but are labeled legacy and report an error
+instead of silently applying them as regex; recreate them using regex and filter controls.
+Literal Find
+draws up to 400 highlights per visible cell plus the current occurrence, retaining
+original Unicode offsets. Its disk-backed occurrence index counts beyond this
+drawing cap. Messages preserve newlines, blank lines and receipt spacing without
+enabling word wrap; Wrap all columns additionally fits long lines to the pane.
 
-Checked levels combine by OR. Other categories and the expression combine by AND;
+Checked levels combine by OR. Other categories and the regex combine by AND;
 include/exclude act on raw text. Time bounds compare source timestamp strings
 lexically and inclusively: use the same date/time format and precision as the
 source. Missing timestamps do not match time bounds. No year/timezone is invented.
 
 Results map matching ordinals back to original source IDs in disk-backed SQLite
 temporary tables. Large match lists never become a renderer array. Each query has
-a generation; stale range requests fail explicitly. Cancelled/failed scans are
-labeled incomplete. Go to Line/Record reports when a source entry is filtered out.
+a generation; stale range requests fail explicitly. Failed scans show an error.
+The redundant filter-result summary is hidden in the simplified layout.
+Go to Line/Record reports when a source entry is filtered out.
 
-Search bounds: 2,000 query characters, 256 tokens, 32 nested expression levels,
+Regex search bounds: 2,000 query characters,
 1,000,000 bytes per source record, two minutes per scan. A larger text record
 stops the search with an explicit error instead of silently excluding it.
-At most two scans run simultaneously across all windows/views. Explicit **Regex**
-mode tests each raw record using JavaScript Unicode regex (`u`, or `iu` for
-case-insensitive mode), without `/` delimiters or expression-field syntax. Sidebar
+At most two scans run simultaneously across all windows/views. **Regex**
+tests each raw record using JavaScript Unicode regex (`u`, or `iu` for
+case-insensitive mode), without `/` delimiters or expression-field syntax. Advanced
 filters still apply. Each bounded batch has a 500 ms watchdog in a disposable
 32 MB worker; timeout/cancellation never claims a complete result. Regex occurrence
 highlighting is unavailable; regex never executes on the renderer.
+Literal Find also enforces a 2,000-character query, 1 MB record limit and two-minute
+scan timeout, with at most two finds across views/windows. Partial/failed counts
+are labeled explicitly; navigation becomes available when counting completes.
 
 Save up to 50 named query/filter presets; select one to load controls, then Apply
-to execute it. Column controls persist show/hide/order/width, with pointer/keyboard
+to execute it. **Settings > Columns** persists show/hide/order/width, with pointer/keyboard
 header resizing and restore defaults. Message remains visible. Split view creates
 a second independently filtered/scrolled view of the same indexed source, without
-duplicating the source index. Column/display preferences are shared.
+duplicating the source index. **Open another log in split** opens a different file
+directly in the second pane; **Open another log** replaces that pane without
+closing the primary. Cancelled/failed picks preserve the existing secondary file.
+Closing the primary closes its split sessions. Column/display preferences are shared.
 
 ## Selection, copy and export
 
@@ -173,7 +274,9 @@ Click to select a record; clicking a selected record again clears selection.
 Ctrl/Meta+click toggles individual records without losing other selections.
 Shift+click or Shift+Enter selects a continuous range from the anchor.
 Selections use at most 500 compact ordered ranges, including off-screen records.
-**Copy selection** or Ctrl+C while a table row is focused copies complete raw records,
+With exactly one selected record, Up/Down moves the selection through visible
+filtered order and stops at the ends. Inputs and EMV buttons retain their own key behavior.
+The toolbar copy icon or Ctrl+C while a table row is focused copies complete raw records,
 not just displayed segments, up to 500 records / 512,000 bytes. Larger selections
 receive an explicit instruction to Export. Native selected text keeps normal Ctrl+C;
 Ctrl+Shift+C explicitly copies selected records. Clipboard writes use a bounded,
@@ -184,12 +287,13 @@ The choice persists across views/windows and uses both themes' existing level co
 Selected rows retain an accent background/stripe and levels remain labeled.
 The bottom position slider remains; the redundant textual range counter is removed.
 
-Export all, the selection, or completed filtered results through a native save
+The copy/export action row is hidden in the simplified UI. The desktop export API
+still supports all records, selections, or completed filtered results through a native save
 dialog. Export streams original record bytes in source order and appends LF
 separators. Structured records remain raw JSON objects, including their original
 internal newlines. Output defaults to `.txt`: it is neither guaranteed JSONL nor
 a reconstructed Android Studio export container.
-Progress and cancellation are visible. Export uses a destination-adjacent
+The API exposes progress and cancellation. Export uses a destination-adjacent
 temporary file and replaces the destination only after completion and source/
 destination checks. Cancellation retains an existing destination and removes
 temporary output. Open source logs cannot be overwritten. Query changes are
@@ -292,8 +396,10 @@ certification dataset. See [EMV scope and references](docs/LogDeck-technical-doc
 | New / close tab | Ctrl+T / Ctrl+W |
 | Next / previous tab | Ctrl+Tab / Ctrl+Shift+Tab |
 | Independent window | Ctrl+N |
-| Focus search | Ctrl+F |
-| Next / previous matching record | F3 / Shift+F3 |
+| Open Find | Ctrl+F |
+| Next / previous text occurrence | Enter / Shift+Enter in Find; F3 / Shift+F3 |
+| Close Find | Escape |
+| Toggle logs-only mode | F11 |
 | Go to source line/record | Ctrl+G |
 | Copy selected complete records | Ctrl+C in table (without native text selection), or Ctrl+Shift+C |
 | Toggle additional records | Ctrl/Meta+click |
@@ -332,12 +438,16 @@ disables traces and does not attach screenshots or raw customer log contents.
 ## Next increments
 
 Whole-file EMV discovery/inventory, broader authorized/versioned scheme definitions,
-regex occurrence highlighting, full individual-occurrence navigation, automatic
+regex occurrence highlighting, automatic
 cache eviction and always-full cache verification remain unfinished. Live ADB
-capture, Firebase authentication, Company AI and cloud sync are deferred integrations.
+capture, Google OAuth, Company AI and log/preference cloud sync are deferred integrations.
+Email/password company-tag authentication is implemented as an optional integration,
+but requires your Firebase project configuration and deployed rules.
 
-There is no installer, signing, automatic update, or Windows Open With registration
-yet. Local command-line file opening exists, but is not an installed association.
+There is no setup wizard or automatic download/installation. Optional per-user
+Windows Open With registration is available in Settings; signing requires your
+publisher certificate. Startup notices and manual checks link to the official
+Download page, where users obtain and replace the portable EXE themselves.
 
 See [the release requirements](docs/spec.md) and
 [the technical specification](docs/LogDeck-technical-documentation.md).

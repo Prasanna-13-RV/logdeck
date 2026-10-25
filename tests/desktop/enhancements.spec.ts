@@ -2,6 +2,7 @@ import { test, expect, _electron as electron } from '@playwright/test'
 import { mkdtemp, writeFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
+import { expectFilterResults } from './viewerAssertions'
 
 async function launch() {
   const directory = await mkdtemp(join(tmpdir(), 'logdeck-enhancements-'))
@@ -47,10 +48,9 @@ test('whole-table scroll, synchronized slider, measured wrap, tabs and disk-back
     await expect.poll(() => page.locator('.tab-panel:not([hidden]) tbody tr').first().evaluate(node => node.getBoundingClientRect().height)).toBeGreaterThan(28)
     expect(await page.locator('.tab-panel:not([hidden]) tbody tr').count()).toBeLessThan(80)
     await page.getByRole('button', { name: 'Wrap all columns' }).click()
-    await page.getByLabel('Filter expression').fill('(tag:Payment OR tag:Network) AND NOT level:D')
+    await page.getByLabel('Regex filter').fill(' W (?:Payment|Network):')
     await page.getByRole('button', { name: 'Apply filters', exact: true }).click()
-    await expect(page.getByRole('status').filter({ hasText: 'matching records' })).toContainText('Complete', { timeout: 20000 })
-    await expect(page.getByRole('status').filter({ hasText: 'matching records' })).toContainText('1,000 matching records')
+    await expectFilterResults(page, opened.value.id, 1000)
     const status = await page.evaluate(id => window.logdeck.searchStatus(id), opened.value.id)
     if (!status.ok) throw new Error(status.error)
     const matches = await page.evaluate(request => window.logdeck.readRange(request), {
@@ -62,14 +62,16 @@ test('whole-table scroll, synchronized slider, measured wrap, tabs and disk-back
     await page.getByRole('button', { name: 'Go to source line' }).click()
     await expect(page.getByRole('alert')).toContainText('filtered out')
     await page.getByRole('button', { name: 'Dismiss error' }).click()
-    await page.getByLabel('Filter expression').fill('unknown:value')
+    await page.getByLabel('Regex filter').fill('[')
     await page.getByRole('button', { name: 'Apply filters', exact: true }).click()
-    await expect(page.getByRole('alert')).toContainText('Unknown query field')
-    await page.getByRole('button', { name: 'Clear filters', exact: true }).click()
+    await expect(page.getByRole('alert')).toContainText('Invalid')
+    await page.getByRole('button', { name: 'Reset filters', exact: true }).click()
+    await page.getByRole('button', { name: 'More filters', exact: true }).click()
     await page.getByLabel('Filter pid').fill('999')
     await page.getByRole('button', { name: 'Apply filters' }).click()
-    await expect(page.getByRole('status').filter({ hasText: 'matching records' })).toContainText('0 matching records')
-    await page.getByRole('button', { name: 'Clear filters', exact: true }).click()
+    await expectFilterResults(page, opened.value.id, 0)
+    await page.getByRole('button', { name: 'Reset filters', exact: true }).click()
+    await page.getByRole('button', { name: 'More filters', exact: true }).click()
     await page.getByLabel('Source line number', { exact: true }).fill('125')
     await page.getByRole('button', { name: 'Go to source line' }).click()
     await expect.poll(async () => Number(await page.getByLabel('Global source position').inputValue())).toBeGreaterThan(100)
@@ -82,7 +84,7 @@ test('whole-table scroll, synchronized slider, measured wrap, tabs and disk-back
     await page.getByRole('tab', { name: 'first-synthetic.log' }).click()
     await expect(page).toHaveTitle('first-synthetic.log - LogDeck')
     const panel = page.locator('.tab-panel:not([hidden])')
-    await expect(panel.getByLabel('Search logs')).toHaveValue('')
+    await expect(panel.getByLabel('Regex filter')).toHaveValue('')
     await expect.poll(async () => Number(await panel.getByLabel('Global source position').inputValue())).toBeGreaterThan(100)
     await expect(panel.locator('tbody')).toContainText('item 125')
     await page.screenshot({ path: 'test-results/tabs-viewer-synthetic.png' })

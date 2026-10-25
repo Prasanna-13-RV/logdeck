@@ -38,7 +38,7 @@ The following decisions were clarified with the product owner:
 | Runtime | Use Electron |
 | Release 1 | Viewer, search/filters, local EMV, independent Compare, windows/themes/settings |
 | Live Android capture | ADB integration comes later |
-| Cloud features | Company AI and login come later |
+| Cloud features | Optional company-tag login is implemented; Company AI and log sync come later |
 | Reference PC | Windows 10/11, 8 GB RAM, SSD, modern four-core CPU |
 | Viewer workload | Existing target: approximately 200 MB typical; up to 500 MB and 10 million lines |
 | Compare purpose | Independent Beyond Compare-style text tool, not a specialized log comparison workflow |
@@ -47,9 +47,9 @@ The following decisions were clarified with the product owner:
 | Compare limits | At most 10 MB and 100,000 lines per side, including edits and paste |
 | Visual direction | Modern developer tool; polished home, compact Android Studio-inspired table workspace |
 | Themes/motion | Dark/light/system, persisted choice, subtle reduced-motion-aware transitions |
-| Home/navigation | Drop area, feature cards below, Features button, future Firebase Login entry |
-| Login before integration | Clearly labeled Coming later dialog; no fake authentication |
-| Advanced viewer | Whole-table scroll/wrap, tabs, expressions/isolated regex, columns, presets, independent stacked splits and export |
+| Home/navigation | Drop area, feature cards below, Features button, optional company-tag Login entry |
+| Optional company login | Configured Firebase email/password; disabled with explanation until configured |
+| Advanced viewer | Multiline messages, whole-table scroll/wrap, collapsible headers/filters, counted Find, columns, presets, stacked/side-by-side splits and export |
 | Query expansion | AND/OR/NOT, parentheses, phrases, explicit regex mode, available metadata fields |
 | Development data | Labeled synthetic fixtures plus two supplied local log formats; authorized EMV data still pending |
 | Delivery | Verified working increments; no application code before clarification completes |
@@ -104,7 +104,7 @@ file indexes, always-on polling, unnecessary dependencies, and full-log objects.
 - Stream and index files incrementally with progress and cancellation.
 - Virtualize rows, bound caches, reuse persisted indexes, and support independent windows.
 - Search, column queries, include/exclude filters, visible highlighting, saved filters.
-- Advanced expression grammar, independent split views, column resizing/reordering/
+- Regex-only viewer input, independent split views, column resizing/reordering/
   visibility, go-to-line, selection/copy/export, keyboard help, and wrapped details.
 - Light/dark themes and persisted local settings.
 - Validate maximum-file behavior on the reference PC before expanding scope.
@@ -119,14 +119,19 @@ file indexes, always-on polling, unnecessary dependencies, and full-log objects.
 
 ### Later phases
 
-- Company-managed EMV database sync and management backend.
-- Google/email login, verification, account preference sync.
+- Automatic multi-pack EMV database sync and broader management backend.
+- Google OAuth, verification, password-reset UI and account preference sync.
 - Company AI explanations and optional command palette.
 - Live ADB ingestion, bounded buffer, pause/resume and paused EMV analysis.
 - Expanded visual customization and custom columns.
 
-The marketing website, admin database editor, identity service, and AI gateway
-are separate systems, not embedded desktop services. Folder sync, binary comparison,
+The Vite/React marketing website and private company-tag publishing UI are separate
+from Electron. Firebase Auth/Firestore are optional external identity/definition services.
+The desktop reads a small same-origin HTTPS version/notes manifest once per app
+launch, asynchronously, and on manual checks from Updates. A nonblocking startup
+notice shows a newer version or a check error. The download page opens manually;
+there is no automatic download or installation. The AI gateway is still
+deferred. Folder sync, binary comparison,
 full IDE functionality, and full Beyond Compare feature parity are not promised.
 
 ## 5. Recommended technology choices
@@ -142,18 +147,28 @@ full IDE functionality, and full Beyond Compare feature parity are not promised.
 | Storage | SQLite via `better-sqlite3` | Worker-owned connections; batched writes, ABI/package validation |
 | Diff | Bounded Myers line diff and selected-block word refinement | Dedicated worker, work/trace limits, watchdog/cancellation; no instant worst-case promise |
 | Compare editor | CodeMirror 6, lazy tool chunk | Virtualized lines; exact 10 MB / 100,000-line load/rejected-edit/save exercised |
-| Packaging | electron-builder is a candidate | Validate installer, native unpacking, Open With, signing, upgrades |
+| Packaging | electron-builder portable Windows x64 EXE | Native unpacking, optional per-user Open With, manual replacement, configurable signing |
 | Tests | Existing/future project runner plus Electron UI tests | No tooling installed solely for this documentation task |
 
 Tested dependency versions are recorded in the manifest and lockfile. Electron
 45.0.0 and better-sqlite3 13.0.3 were verified through real worker/database desktop
 tests. Electron supplies its own Node.js; build-time Node.js is distinct.
 
-Do not assume electron-vite automatically rebuilds `better-sqlite3`. Use compatible
-prebuilds or configure a packaging/rebuild step, such as `@electron/rebuild`.
-Test the installed Windows build, not only development mode.
-The current pair uses a working native prebuild without a local compiler rebuild.
-An installer/installed-build test is still outstanding.
+SQLite 13 ships a compatible Node-API prebuild, so the packaging configuration
+disables unnecessary compiler rebuilds and unpacks the module from ASAR.
+Release preparation must launch both the packaged runtime and portable EXE and
+verify SQLite plus worker-backed file opening; a successful development build alone
+does not satisfy this gate. Signing still requires a real publisher certificate.
+
+Distribution uses a no-installer portable Windows x64 EXE. Optional Settings
+registration adds per-user OpenWithProgids/capabilities without overriding default
+apps. Users must register again after moving or replacing the versioned EXE.
+GitHub Releases hosts binaries/checksums; Netlify hosts the website and a bounded
+same-origin metadata proxy for the latest complete public stable release. Updates
+include one asynchronous startup check, retryable manual checks and manual EXE replacement.
+`npm run release` prepares locally, defaults to a patch bump, and never commits or
+pushes. The pushed matching tag triggers CI publication.
+See [distribution setup](Firebase-and-website-setup.md).
 
 ## 6. Process architecture
 
@@ -325,20 +340,19 @@ Supported concepts:
 
 ```text
 timeout
-"connection failed"
-tag:MCEMV level:E
-pid:844 tid:120 message:timeout
+connection failed
+MCEMV|Payment
+Core\.(?!Dal)
 ```
 
-Define the parser grammar before coding: quoting/escaping, field validation,
-case-sensitivity, and the UI's explicit regex mode. Do not silently treat an
+The UI applies JavaScript Unicode regex on Enter or Apply, without delimiter
+slashes. Case sensitivity is explicit. Do not silently treat an
 invalid query as a successful empty result.
 
-- In expression mode, support uppercase AND/OR/NOT with parentheses and quoted
-  phrases. Precedence is parentheses, NOT, AND, OR; adjacent clauses imply AND.
-- Combine the resulting query expression with enabled sidebar categories using AND.
-- Initial regex mode matches raw records and combines with sidebar filters; it is
-  a clearly labeled mode distinct from field-expression parsing. Do not claim exact
+- Expression parsing remains an internal compatibility API, not a viewer mode.
+  Legacy expression presets are preserved but rejected with an explicit UI warning.
+- Regex matches raw records and combines with More filters categories using AND.
+  The sidebar and expression selector are removed. Do not claim exact
   Android Studio query syntax compatibility. See [release requirements](spec.md).
 - Within a multi-select category such as levels, selected values are OR.
 - Include/exclude behavior must be explicit; excludes remove matching records.
@@ -366,38 +380,53 @@ its syntax restrictions. Never silently change regex semantics.
 
 ### Implemented search subset
 
-Expression/regex modes and level/tag/PID/TID/application/include/exclude/time categories
-are available in the sidebar after indexing completes. Apply filters runs explicitly rather than
+Regex and level/tag/PID/TID/application/include/exclude/time categories
+are available in the top filter bar and collapsible More filters section after indexing completes.
+Enter or Apply filters runs explicitly rather than
 rescanning on every keystroke. Full result IDs remain in SQLite file-backed
 temporary tables owned by a session, with generation-checked ranges and original
 source-ID lookup. Scans yield between batches and expose progress/cancel/partial/
 error states. Closing a tab cancels its scan and drops only its result table.
 
-Bounds: 2,000 characters, 256 tokens, depth 32, 1 MB per complete source entry,
-two-minute scan timeout. Larger entries fail explicitly. PID/TID/level/line are
+Bounds: 2,000 characters, 1 MB per complete source entry, two-minute scan timeout.
+The internal legacy expression API additionally limits tokens to 256 and depth to 32.
+Larger entries fail explicitly. In that API, PID/TID/level/line are
 exact fields; other fields contain text, with optional case sensitivity. Time
 bounds currently compare inclusive source strings in the same format/precision;
 they do not normalize dates/timezones. `-field:value` is unary field exclusion,
-equivalent to `NOT field:value`; `Core. -tag:Core.Dal` is supported. Filtering does
-not highlight. The top-bar Search independently highlights literal text up to 400
-occurrences per visible cell with Unicode offset preservation, without changing
-the worker filter, result count, or row selection. Clear/reset operations affect
-only their own control. Top search has separate case sensitivity. Regex occurrence highlighting and full
-individual-occurrence navigation remain gaps; navigation is currently record-level.
+equivalent to `NOT field:value`; `Core. -tag:Core.Dal` is supported internally, not in the UI. Filtering does
+not highlight. Ctrl+F opens an independent top-right literal Find popup over the
+log area. A session-owned SQLite file-backed occurrence table stores filtered
+ordinal, source record, visible column and UTF-16 start/end offsets. The renderer
+receives counts and one requested occurrence, not the entire result list.
+Counts cover repeated and off-screen occurrences; up to 400 highlights per cell
+plus the current occurrence are drawn. Enter/F3 and Shift+Enter/Shift+F3 navigate
+occurrences with wraparound, without changing copy/export selection. Find has its
+own case option and the same 1 MB record / two-minute bounds, with at most two
+finds concurrently. Incomplete counts are explicit; navigation waits for completion.
+Changing filters or visible columns invalidates/recounts Find. Closing Find cancels
+its scan and drops its occurrence table. Regex occurrence highlighting remains a gap.
 See [the README grammar](../README.md#search-and-filters).
 
 Regex tests raw records using JavaScript Unicode syntax (`u` or `iu`, without
-delimiters) only after sidebar predicates pass. Each disposable regex worker has
+delimiters) only after advanced filter predicates pass. Each disposable regex worker has
 a 32 MB old-generation limit and a 500 ms batch watchdog. Batches contain up to
 200 entries / approximately 256 KB (one entry may reach the separate 1 MB bound).
 The whole scan retains the two-minute deadline. Cancellation terminates the worker.
 At most two searches run concurrently across all views/windows.
 
-Local saved investigations support up to 50 named query/filter/mode presets,
-including apply/rename/delete. Persistent seven-column layout supports width,
-order, visibility and defaults; Message remains visible. Two stacked split panes
-use separate session/query/selection/scroll state while sharing the source index.
+Local saved investigations support up to 50 named regex/filter presets,
+including apply/rename/delete. Settings > Columns supports persistent width,
+order, visibility and defaults; Message remains visible. Two stacked or side-by-side split panes
+use separate session/query/selection/scroll state. Splitting the same file shares
+its index; Open another log loads/replaces an independent secondary file.
+Picker cancellation or failure preserves the previous secondary session.
+Main-process session metadata retains parent associations across renderer reloads,
+and closing a primary closes its secondary.
 Column and display preferences are intentionally shared across views/windows.
+Hiding tabs also hides navigation; a fixed top-right restore button brings both back.
+F11 remains reversible logs-only mode. Up/Down moves a single selected log through
+filtered ordinal positions across virtual pages without stealing input/button keys.
 
 Selections are compact sorted disjoint ordinal ranges, not one object per source
 record: click toggles selection off/on, Ctrl/Meta-click toggles individual rows,
@@ -416,11 +445,16 @@ Progress/cancel, temporary-file cleanup, source
 protection and destination checks preserve existing files on cancel/error. Query
 replacement is blocked during the view's export to preserve its result mapping.
 
-The sidebar also exposes a persisted text-only/full-row-background severity choice,
+The More filters section also exposes a persisted text-only/full-row-background severity choice,
 using existing light/dark palette variables. Selected rows override the background
 with an accent stripe; the level label remains. File metadata is collapsible below
 filter/preset controls. The bottom slider tracks scrolling without the redundant
 textual Records/Matches range counter.
+
+Embedded message newlines and spacing are preserved in both horizontal-scroll
+and wrap modes; measured virtual rows grow to their content height. Navigation,
+tabs and viewer controls can each be hidden and restored. F11 toggles logs-only
+mode; a floating Restore headers button remains available.
 
 ## 10. Local EMV
 
@@ -473,8 +507,9 @@ prefetch), not by a startup full-file scan. New regions are recognized as the us
 scrolls/searches/navigates. There is no whole-file EMV inventory or count. Switching
 EMV off clears that view's annotations and definition panel, invalidates outstanding
 range results, and requests subsequent ranges without recognition. Tabs, splits and
-windows keep independent tracking state. No runtime HTTP lookup, Firebase, AI or
-log upload is involved.
+windows keep independent tracking state. Recognition never performs runtime HTTP,
+Firebase, AI or log-upload requests. An explicitly downloaded company pack is applied
+locally alongside the global dictionary.
 
 The versioned local dictionary (`1.1.0`, 60 entries) contains original short reference summaries
 for common tags, separate from the seven-tag editable decoder coverage. Public fact
@@ -596,8 +631,8 @@ until requested. No login prompt or network prerequisite for local viewing.
 
 Home has a prominent drop zone with an equivalent file-picker button, supported
 formats, and feature cards underneath. Navbar contains Home, Features (home section),
-Open, Compare, Settings, appearance, and Login. Login is visibly "Coming later" and
-opens an explanatory future-Firebase dialog without collecting credentials.
+Open, Compare, Settings, appearance, and Login. Login opens optional company-tag access.
+Unconfigured builds disable credentials and downloading with an explicit explanation.
 Features distinguish implemented, planned, and synthetic-demo status.
 
 Use a compact table workspace and collapsible left filters; the current revised
@@ -656,7 +691,34 @@ and update a small active-version manifest using a tested crash-safe strategy.
 An untrusted checksum beside an untrusted download does not establish authenticity.
 Do not contact the update endpoint on the critical startup path.
 
-### Company AI and authentication
+### Website and company-tag authentication (implemented, requires configuration)
+
+The separate Vite/React website offers Home, Features and Download using the desktop
+visual template, plus `/admin` for company pack publication. Route visibility is not
+authorization: Firestore rules enforce active company membership and admin-only writes.
+Firebase email/password uses bounded REST requests, with no Firebase SDK dependency.
+ID/refresh tokens exist in memory only. Desktop network calls run in main, never the
+renderer, and no log content is sent. Authentication does not run on startup.
+
+The shared pack validator bounds uploads/downloads to 512,000 UTF-8 bytes, 1,000
+unique hexadecimal IDs, safe integer versions and bounded text fields. Admin
+publication atomically creates an immutable version and advances the catalog using
+compare-and-swap preconditions. Rules disallow membership self-grants, enumeration,
+cross-company reads, updates/deletion of packs and non-increasing versions.
+
+Only the Settings **Download EMV tags** action fetches a pack. Main revalidates it,
+rejects downgrade or a modified equal version, applies the worker definition set,
+and atomically replaces the local cache; failed persistence restores the old worker
+pack. One company pack is active per profile. Global definitions and value checks
+are never overwritten: inspector displays both sources, versions and separate length
+checks. Company definitions do not create new editable bit layouts.
+
+Sign-out/window close discards credentials but not downloaded definitions. Revocation
+blocks future cloud access; it cannot revoke an existing offline copy. Local cache
+is plaintext JSON protected by the user's OS profile permissions, not DRM or encrypted
+storage. See [setup, trust boundaries and operator responsibilities](Firebase-and-website-setup.md).
+
+### Company AI and future authentication
 
 Company AI is the only product-facing AI integration; no local model or generic
 provider selector. LiteLLM is a planned backend detail, not a desktop Python dependency.
@@ -735,7 +797,7 @@ Tests to implement, not tests already run:
    UTF-8 byte counts, stale diffs, cancellation, conflict/save failures, dirty-close warning.
 8. **Isolation:** index/search/compare while scrolling a viewer; one closed window
    does not corrupt another; memory and file handles settle after repeated open/close.
-9. **Packaging:** installed build loads native SQLite and workers, honors CSP,
+9. **Packaging:** portable build loads native SQLite and workers, honors CSP,
    requires no production server, opens offline, and retains required file associations.
 
 Record hardware, OS, app/runtime versions, fixture bytes/lines/encoding, cold/warm
@@ -751,7 +813,8 @@ silently assumed complete:
 - Additional sanitized formats/encodings, longest records, and real EMV examples;
   two representative saved-file formats have already been supplied and tested locally.
 - Authorized bundled EMV dataset, proprietary tag rules, and redistribution rights.
-- Exact minimum Windows versions, x64/ARM64 support, installer/signing/update policy.
+- Windows 10/11 x64 release hardware verification and real publisher signing;
+  ARM64 is not currently distributed. Portable/manual-update policy is selected.
 - Real-hardware validation of the proposed performance budgets and cache disk budget.
 - Compare editor/library selection after measuring the agreed input limits.
 - Future backend/auth/AI endpoint contracts, licensing, privacy, and retention policies.

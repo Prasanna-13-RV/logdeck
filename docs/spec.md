@@ -31,7 +31,7 @@ handoff. Each view can disable tracking. There is no full-file EMV inventory.
 Regex occurrence highlighting and full individual-occurrence navigation remain
 gaps in REQ-015. Broader authorized scheme definitions remain later work.
 This snapshot does not mark all
-35 release requirements complete.
+36 release requirements complete.
 Maximum-size/reference-hardware performance and installed Windows integration
 have not been certified. See [run instructions and current bounds](../README.md).
 
@@ -39,10 +39,10 @@ have not been certified. See [run instructions and current bounds](../README.md)
 
 - **Discovery method:** Read the five existing product documents and resolve the
   expanded feature/UI scope through direct product-owner questions.
-- **Total items discovered:** 68 existing FR identifiers plus 35 release-experience
+- **Total items discovered:** 68 existing FR identifiers plus 36 release-experience
   requirements below. These identifiers have different namespaces and are not
   counts of independent features.
-- **Items in scope:** All 35 REQ requirements below for the complete release,
+- **Items in scope:** All 36 REQ requirements below for the complete release,
   delivered in working increments. Existing future-phase FR requirements remain deferred.
 - This specification owns the clarified UX/query scope. It supplements, rather than
   replaces, the existing FR identifiers and technical performance contracts.
@@ -111,7 +111,8 @@ reduced motion enabled; restart and confirm saved appearance.
 2. **Given** reduced motion, **when** panels open or controls change, **then**
    nonessential animation is disabled.
 3. **Given** the Login entry, **when** activated, **then** an accessible dialog
-   explains that Firebase sign-in is coming later; no credentials are collected.
+   offers optional company-tag sign-in only when Firebase is configured, otherwise
+   clearly explains why credentials and downloads are disabled. Local viewing never requires login.
 
 ### User Story 4 - Inspect local EMV information (Priority: P2)
 
@@ -177,8 +178,9 @@ and exercise limit/conflict/dirty-close cases.
   available, planned, and demonstration-only capabilities.
 - **REQ-004:** The navbar MUST provide Home, Features, Open, Compare, Settings,
   appearance control, and Login; Features navigates to the home feature section.
-- **REQ-005:** Login MUST be labeled "Coming later" and open an explanatory dialog
-  mentioning future Firebase authentication, with no fake successful login or credentials form.
+- **REQ-005:** Login MUST open optional Firebase email/password company-tag access.
+  Without configuration its credential/download controls MUST remain disabled.
+  Authentication MUST never be required for local viewing or simulated as successful.
 - **REQ-006:** Light, dark, and follow-system appearance MUST be available and
   persisted; log data/query/selection MUST survive a theme change.
 - **REQ-007:** Workspace MUST use a compact log table with Time, PID, TID, Level,
@@ -272,6 +274,16 @@ and exercise limit/conflict/dirty-close cases.
   offsets, duplicate occurrences, and nested templates. Editing supported
   leaf values MUST produce a modified full sequence without changing its
   tags, lengths, or unrelated values.
+- **REQ-036:** Desktop MUST offer an Update page that displays the installed
+  version and, only after explicit user action, checks a bounded same-origin HTTPS
+  release manifest for the latest website version and notes. Updates MUST remain
+  manual, and release checks MUST NOT upload logs or run at startup.
+  Windows distribution uses a portable x64 EXE with optional confirmed per-user
+  Open with registration for .log/.logcat, without replacing default apps.
+  Local release preparation MUST synchronize the version/lockfile, test and package
+  the native runtime, produce a checksum and metadata, and never commit or push.
+  A pushed version tag triggers GitHub publication. The Netlify production endpoint
+  MUST reflect a complete published stable release, not an unuploaded local build.
 
 ### Non-Functional Requirements
 
@@ -310,8 +322,10 @@ does not waive them. Source files remain read-only outside deliberate Compare sa
   is explicit, with distinct input/help so expressions are not unexpectedly reinterpreted.
 - Parser behavior for escapes, time ranges, absent fields, and literal operator
   text must be documented with examples and covered by tests before query implementation.
-- Firebase integration is later scope: no SDK startup, project secrets/configuration,
-  identity-provider selection, or backend calls are needed for the placeholder.
+- Firebase is optional and limited to company-tag identity and publication/download.
+  No startup network calls, log uploads, automatic release checks/installations, or bundled privileged
+  credentials are allowed. Public web configuration is supplied at build time.
+  See [setup and pack schema](Firebase-and-website-setup.md).
 - Synthetic fixtures are approved initially; real parser coverage and production
   EMV decoding require sanitized examples and an authorized dataset later.
 

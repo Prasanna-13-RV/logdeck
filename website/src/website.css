@@ -1,0 +1,58 @@
+.website { min-height: 100vh; display: flex; flex-direction: column; background: radial-gradient(ellipse at 50% 12%, var(--hero-glow), transparent 53%), var(--bg); }
+.website a { color: var(--accent); text-decoration: none; }
+.website a:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+.website .navbar { position: sticky; top: 0; }
+.website .brand { display: inline-flex; align-items: center; color: var(--text); }
+.website .navbar nav a { color: var(--muted); font-size: 13px; font-weight: 600; padding: 10px 0; }
+.website .navbar nav a[aria-current=page] { color: var(--accent); border-bottom: 2px solid var(--accent); }
+.website a.primary-button { display: inline-flex; align-items: center; justify-content: center; gap: 10px; color: var(--accent-ink); }
+.website a.secondary-button { display: inline-flex; align-items: center; justify-content: center; }
+.site-main { flex: 1; min-width: 0; }
+.site-hero { padding-top: 80px; }
+.site-hero h1 { font-size: clamp(48px, 6vw, 80px); }
+.site-actions { display: flex; align-items: center; justify-content: center; gap: 14px; flex-wrap: wrap; margin: 25px 0; }
+.website .trust-row { margin: 28px 0; }
+.site-preview { margin: 40px auto 0; max-width: 720px; border: 1px solid var(--border); background: var(--surface); border-radius: 12px; text-align: left; box-shadow: 0 24px 60px #0000000c; overflow: hidden; }
+.site-preview header { display: flex; align-items: center; gap: 10px; padding: 16px; border-bottom: 1px solid var(--border); font-size: 12px; }
+.site-preview footer { padding: 14px; font-size: 10px; color: var(--muted); border-top: 1px solid var(--border); }
+.preview-row { display: grid; grid-template-columns: 50px 85px minmax(0, 1fr); gap: 12px; padding: 11px 16px; font: 11px/1.6 Consolas, monospace; }
+.preview-row span { overflow-wrap: anywhere; min-width: 0; }
+.preview-head { background: var(--surface-raised); color: var(--muted); font-size: 9px; }
+.site-section { max-width: 1160px; margin: 25px auto; padding: 30px; }
+.site-callout { padding: 45px 30px; text-align: center; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; }
+.site-callout p { color: var(--muted); line-height: 1.9; max-width: 650px; margin: 20px auto; }
+.site-footer { width: calc(100% - 60px); }
+.site-footer > div { display: flex; gap: 20px; }
+.detail-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+.detail-grid .tool-card { margin: 0; }
+.download-card { max-width: 570px; margin: 30px auto; padding: 32px; }
+.download-card > svg { color: var(--accent); margin: 12px 0; }
+.release-checksum { overflow-wrap: anywhere; }
+.site-notice, .site-error { margin: 20px; padding: 16px; border: 1px solid var(--accent-border); background: var(--accent-soft); border-radius: 8px; line-height: 1.8; }
+.site-error { color: var(--error); background: var(--error-bg); border-color: var(--error); }
+.admin-page { max-width: 900px; }
+.admin-page h1 { font-size: clamp(32px, 5vw, 48px); letter-spacing: -1.5px; }
+.admin-page h1 span { color: var(--accent); }
+.admin-page > .eyebrow { justify-content: flex-start; }
+.admin-page > p { color: var(--muted); line-height: 1.8; }
+.admin-form label { display: grid; gap: 8px; margin: 16px 0; font-size: 13px; }
+.admin-form input { max-width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 6px; color: var(--text); background: var(--bg); }
+.admin-form button[type=submit] { margin-top: 12px; }
+.admin-preview { max-height: 360px; overflow: auto; margin: 20px 0; }
+.admin-preview table { width: 100%; border-collapse: collapse; text-align: left; }
+.admin-preview th, .admin-preview td { padding: 10px; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
+.skip-link { position: fixed; top: -100px; left: 10px; z-index: 100; padding: 12px; background: var(--surface); }
+.skip-link:focus { top: 10px; }
+@media (max-width: 700px) {
+  .website .navbar { height: auto; min-height: 70px; flex-wrap: wrap; padding: 14px 18px; gap: 15px; }
+  .website .navbar nav { order: 3; width: 100%; justify-content: center; gap: 26px; }
+  .website .feature-grid, .detail-grid { grid-template-columns: minmax(0, 1fr); }
+  .website .section-heading { align-items: flex-start; flex-direction: column; }
+  .site-hero { padding-top: 45px; }
+  .site-section { margin: 15px; padding: 20px; }
+  .site-footer { flex-direction: column; width: calc(100% - 40px); margin: 20px; }
+  .site-footer > div { flex-wrap: wrap; }
+  .preview-row { grid-template-columns: 35px 65px minmax(0, 1fr); gap: 7px; padding: 10px; font-size: 10px; }
+  .site-preview header { flex-wrap: wrap; }
+  .website .hero h1 { letter-spacing: -1.6px; }
+}

@@ -82,8 +82,11 @@ Use `.ts` and `.tsx` files throughout.
 See [the release experience specification](spec.md) for dark/light/system themes,
 accessible finite motion, the table workspace, and the home/navigation contract.
 Prefer CSS transitions over a new animation runtime for simple interactions.
-Firebase authentication is deferred; the Coming later Login explanation needs no
-Firebase SDK or network initialization in release 1.
+Optional company-tag email/password authentication uses bounded Firebase Auth/
+Firestore REST calls without a Firebase SDK dependency or startup network access.
+The separate Vite/React website reuses desktop themes/cards. See
+[setup and deployment](Firebase-and-website-setup.md). Google OAuth, account
+preference sync and Company AI remain later scope.
 
 ---
 

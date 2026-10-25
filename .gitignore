@@ -3,6 +3,8 @@ out/
 dist/
 release/
 test-results/
+test-results-website/
+website/dist/
 playwright-report/
 *.log
 *.tsbuildinfo

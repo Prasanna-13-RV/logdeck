@@ -1,0 +1,35 @@
+[build]
+  command = "npm run build:website"
+  publish = "website/dist"
+  functions = "netlify/functions"
+
+[build.environment]
+  NODE_VERSION = "22.22.0"
+  ELECTRON_SKIP_BINARY_DOWNLOAD = "1"
+
+[functions]
+  node_bundler = "esbuild"
+
+[[redirects]]
+  from = "/updates/windows.json"
+  to = "/.netlify/functions/windows-release"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "no-referrer"
+    X-Frame-Options = "DENY"
+    Content-Security-Policy = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'"
+
+[[headers]]
+  for = "/index.html"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"

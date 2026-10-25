@@ -3,6 +3,7 @@ import type { DesktopApi, SessionInfo } from '../../shared/contracts'
 
 const api: DesktopApi = {
   openFile: () => ipcRenderer.invoke('files:pick'),
+  openSplitFile: parentId => ipcRenderer.invoke('files:pick-split', parentId),
   openDroppedFile: path => ipcRenderer.invoke('files:drop', path),
   pathForFile: file => webUtils.getPathForFile(file),
   openDemo: () => ipcRenderer.invoke('files:demo'),
@@ -16,12 +17,31 @@ const api: DesktopApi = {
   newWindow: () => ipcRenderer.invoke('windows:new'),
   startSearch: request => ipcRenderer.invoke('files:search', request),
   searchStatus: id => ipcRenderer.invoke('files:search-status', id),
+  startFind: request => ipcRenderer.invoke('files:find', request),
+  findStatus: id => ipcRenderer.invoke('files:find-status', id),
+  cancelFind: id => ipcRenderer.invoke('files:find-cancel', id),
+  findMatch: request => ipcRenderer.invoke('files:find-match', request),
   cancelSearch: id => ipcRenderer.invoke('files:search-cancel', id),
   locate: request => ipcRenderer.invoke('files:locate', request),
   duplicateSession: id => ipcRenderer.invoke('files:duplicate', id),
   exportRecords: request => ipcRenderer.invoke('files:export', request),
   copyRecords: request => ipcRenderer.invoke('files:copy', request),
   writeClipboard: text => ipcRenderer.invoke('clipboard:write', text),
+  companyTagStatus: () => ipcRenderer.invoke('company:status'),
+  companySignIn: (email, password) => ipcRenderer.invoke('company:sign-in', { email, password }),
+  companySignOut: () => ipcRenderer.invoke('company:sign-out'),
+  downloadCompanyTags: companyId => ipcRenderer.invoke('company:download', companyId),
+  onCompanyTagsChanged: listener => {
+    const receive = () => listener()
+    ipcRenderer.on('company:changed', receive)
+    return () => ipcRenderer.removeListener('company:changed', receive)
+  },
+  updatePageInfo: () => ipcRenderer.invoke('updates:info'),
+  checkForUpdates: () => ipcRenderer.invoke('updates:check'),
+  startupUpdateCheck: () => ipcRenderer.invoke('updates:startup'),
+  openDownloadPage: () => ipcRenderer.invoke('updates:open-download'),
+  windowsIntegrationInfo: () => ipcRenderer.invoke('windows:integration-info'),
+  changeWindowsIntegration: action => ipcRenderer.invoke('windows:integration-change', action),
   exportStatus: id => ipcRenderer.invoke('files:export-status', id),
   cancelExport: id => ipcRenderer.invoke('files:export-cancel', id),
   cacheInfo: () => ipcRenderer.invoke('cache:info'),

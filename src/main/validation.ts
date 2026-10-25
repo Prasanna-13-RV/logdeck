@@ -1,4 +1,4 @@
-import { limits, type RangeRequest, type SegmentRequest, type SearchRequest, type SearchFilters, type LogLevel, type ExportRequest } from '../../shared/contracts'
+import { findColumns, limits, type FindRequest, type RangeRequest, type SegmentRequest, type SearchRequest, type SearchFilters, type LogLevel, type ExportRequest } from '../../shared/contracts'
 import type { PositionRange } from '../../shared/selection'
 
 export function object(value: unknown): Record<string, unknown> {
@@ -88,4 +88,18 @@ export function validateExport(value: unknown): ExportRequest {
 export function validateLocate(value: unknown) {
   const data = object(value)
   return { id: sessionId(data.id), line: integer(data.line, 1, limits.lines), searchVersion: integer(data.searchVersion, 1, Number.MAX_SAFE_INTEGER) }
+}
+
+export function validateFind(value: unknown): FindRequest {
+  const data = object(value)
+  if (typeof data.query !== 'string' || !data.query.length || data.query.length > 2000 || typeof data.caseSensitive !== 'boolean') throw new Error('Find requires 1-2,000 characters and a case option.')
+  if (!Array.isArray(data.columns) || !data.columns.length || data.columns.length > findColumns.length ||
+    data.columns.some(column => !findColumns.includes(column))) throw new Error('Invalid find columns.')
+  return { id: sessionId(data.id), query: data.query, caseSensitive: data.caseSensitive, columns: data.columns,
+    searchVersion: data.searchVersion === undefined ? undefined : integer(data.searchVersion, 1, Number.MAX_SAFE_INTEGER) }
+}
+
+export function validateFindMatch(value: unknown) {
+  const data = object(value)
+  return { id: sessionId(data.id), version: integer(data.version, 1, Number.MAX_SAFE_INTEGER), ordinal: integer(data.ordinal, 1, Number.MAX_SAFE_INTEGER), emv: optionalBoolean(data.emv) }
 }

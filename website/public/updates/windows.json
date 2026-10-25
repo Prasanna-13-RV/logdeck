@@ -1,0 +1,8 @@
+{
+  "latestVersion": "0.1.1",
+  "publishedAt": "2026-10-25T11:12:34.479Z",
+  "releaseNotes": "Portable Windows EXE, optional Open with LogDeck registration, and GitHub-backed manual updates through the Netlify website.",
+  "downloadUrl": "https://github.com/Prasanna-13-RV/logdeck/releases/download/v0.1.1/LogDeck-0.1.1-windows-x64.exe",
+  "checksumUrl": "https://github.com/Prasanna-13-RV/logdeck/releases/download/v0.1.1/SHA256SUMS.txt",
+  "sha256": "f8dcbfa37452351fa8cfa1c1a2b4cc907f6ecb3476e3ce701d9992f336fee46c"
+}

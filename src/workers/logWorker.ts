@@ -4,13 +4,14 @@ import type { FileHandle } from 'node:fs/promises'
 import { createHash } from 'node:crypto'
 import { join } from 'node:path'
 import Database from 'better-sqlite3'
-import { limits, type LogRow, type SessionInfo, type SearchRequest, type SearchInfo, type ExportRequest, type ExportInfo, type CacheInfo } from '../../shared/contracts'
-import { compileQuery, matchesFilters } from './search'
+import { limits, type FindRequest, type FindMatch, type LogRow, type SessionInfo, type SearchRequest, type SearchInfo, type ExportRequest, type ExportInfo, type CacheInfo } from '../../shared/contracts'
+import { compileQuery, literalHighlightSpans, matchesFilters } from './search'
 import { RegexJob } from './regex'
 import { LineScanner, parseLogLine, validateUtf8Prefix } from './logCore'
 import { AndroidJsonScanner, parseAndroidRecord } from './androidJson'
 import { trackEmv } from '../../shared/emvTracker'
 import { selectedPositions, selectionCount } from '../../shared/selection'
+import { parseTagPack, type CompanyTagPack } from '../../shared/companyTags'
 
 interface Resource {
   key: string
@@ -37,11 +38,12 @@ interface Session {
   resource: Resource
   cancelled: boolean
   search?: { info: SearchInfo; table: string; stop: boolean; task?: Promise<void>; regex?: RegexJob }
+  find?: { info: SearchInfo; table: string; stop: boolean; task?: Promise<void>; searchVersion?: number }
   export?: { info: ExportInfo; stop: boolean; task?: Promise<void> }
 }
 interface Command {
   requestId: number
-  type: 'open' | 'range' | 'segment' | 'cancel' | 'close' | 'search' | 'search-status' | 'search-cancel' | 'locate' | 'duplicate' | 'export' | 'export-status' | 'export-cancel' | 'cache-info' | 'cache-clear' | 'copy'
+  type: 'open' | 'range' | 'segment' | 'cancel' | 'close' | 'search' | 'search-status' | 'search-cancel' | 'find' | 'find-status' | 'find-cancel' | 'find-match' | 'locate' | 'duplicate' | 'export' | 'export-status' | 'export-cancel' | 'cache-info' | 'cache-clear' | 'copy' | 'company-tags'
   id: string
   path?: string
   name?: string
@@ -52,10 +54,14 @@ interface Command {
   offset?: number
   emv?: boolean
   search?: SearchRequest
+  find?: FindRequest
+  version?: number
+  ordinal?: number
   searchVersion?: number
   newId?: string
   export?: ExportRequest
   destination?: string
+  companyPack?: CompanyTagPack | null
 }
 
 const port = parentPort!
@@ -63,6 +69,7 @@ const sessions = new Map<string, Session>()
 const resources = new Map<string, Resource>()
 const cachePath = (workerData as { cachePath: string }).cachePath
 let searchVersion = 0
+let companyPack: CompanyTagPack | null = null
 
 function info(session: Session): SessionInfo {
   const resource = session.resource
@@ -285,7 +292,7 @@ async function readRow(resource: Resource, line: number, offset = 0, maxBytes: n
     line, sourceLine: record.sourceLine ?? line, byteLength: record.length,
     truncated: more || offset > 0, segmentOffset: offset, nextOffset: offset + end
   }
-  if (emv) row.emv = trackEmv(offset ? raw : row.message, structured && !offset ? structured.message.length > maxBytes : more)
+  if (emv) row.emv = trackEmv(offset ? raw : row.message, structured && !offset ? structured.message.length > maxBytes : more, companyPack?.tags)
   return row
 }
 
@@ -294,6 +301,44 @@ async function stopSearch(session: Session) {
   session.search.stop = true
   session.search.regex?.stop()
   await session.search.task
+}
+
+async function stopFind(session: Session) {
+  if (!session.find) return
+  session.find.stop = true
+  await session.find.task
+}
+
+async function findFile(session: Session, request: FindRequest) {
+  const job = session.find!
+  const resource = session.resource
+  const insert = resource.db.prepare(`INSERT INTO ${job.table} (ordinal, position, column, start, end, line) VALUES (?, ?, ?, ?, ?, ?)`)
+  const source = request.searchVersion === undefined ? undefined : resource.db.prepare(`SELECT line FROM ${session.search!.table} WHERE position = ?`)
+  const started = Date.now()
+  try {
+    await checkSource(resource)
+    for (let position = 1; position <= job.info.total && !job.stop; position++) {
+      const line = source ? (source.get(position) as { line: number }).line : position
+      const record = resource.db.prepare('SELECT length FROM lines WHERE line = ?').get(line) as { length: number }
+      if (record.length > 1_000_000) throw new Error(`Find stopped: record ${line} exceeds the 1 MB search-record limit. No complete result is claimed.`)
+      const row = await readRow(resource, line, 0, 1_000_000)
+      resource.db.transaction(() => {
+        for (const column of request.columns) {
+          for (const span of literalHighlightSpans(String(row[column]), [request.query], request.caseSensitive, Infinity)) {
+            insert.run(++job.info.matches, position, column, span.start, span.end, line)
+          }
+        }
+      })()
+      job.info.scanned = position
+      if (Date.now() - started > 120_000) throw new Error('Find exceeded two minutes. Filter the logs and retry.')
+      if (position % 200 === 0) await new Promise<void>(resolve => setImmediate(resolve))
+    }
+    await checkSource(resource)
+    job.info.status = job.stop ? 'cancelled' : 'ready'
+  } catch (error) {
+    job.info.status = job.stop ? 'cancelled' : 'error'
+    if (!job.stop) job.info.error = error instanceof Error ? error.message : 'Find failed.'
+  }
 }
 
 async function searchFile(session: Session, request: SearchRequest, match: ReturnType<typeof compileQuery>) {
@@ -416,7 +461,9 @@ async function closeSession(id: string) {
   if (!session) return
   if (session.export) { session.export.stop = true; await session.export.task }
   await stopSearch(session)
+  await stopFind(session)
   if (session.search) session.resource.db.exec(`DROP TABLE IF EXISTS ${session.search.table}`)
+  if (session.find) session.resource.db.exec(`DROP TABLE IF EXISTS ${session.find.table}`)
   sessions.delete(id)
   const resource = session.resource
   const remaining = [...sessions.values()].filter(s => s.resource === resource)
@@ -437,6 +484,10 @@ async function closeSession(id: string) {
 }
 
 async function handle(command: Command): Promise<unknown> {
+  if (command.type === 'company-tags') {
+    companyPack = command.companyPack ? parseTagPack(JSON.stringify(command.companyPack)) : null
+    return
+  }
   if (command.type === 'cache-info' || command.type === 'cache-clear') return cacheInventory(command.type === 'cache-clear')
   if (command.type === 'open') {
     const resource = await openResource(command.path!)
@@ -490,6 +541,7 @@ async function handle(command: Command): Promise<unknown> {
     const request = command.search!
     const match = request.mode === 'regex' ? () => true : compileQuery(request.query, request.caseSensitive)
     const regex = request.mode === 'regex' ? new RegexJob(request.query, request.caseSensitive) : undefined
+    await stopFind(session)
     await stopSearch(session)
     if (session.search) resource.db.exec(`DROP TABLE IF EXISTS ${session.search.table}`)
     const version = ++searchVersion
@@ -505,7 +557,33 @@ async function handle(command: Command): Promise<unknown> {
   }
   if (command.type === 'search-cancel') {
     if (session.export?.info.status === 'running') throw new Error('Finish or cancel the export before changing the search.')
+    await stopFind(session)
     await stopSearch(session); return
+  }
+  if (command.type === 'find') {
+    if (resource.status !== 'ready') throw new Error('Wait for indexing to finish before finding text.')
+    const request = command.find!
+    if (request.searchVersion !== undefined && (session.search?.info.version !== request.searchVersion || session.search.info.status !== 'ready')) throw new Error('Complete the filters before finding text in their results.')
+    if ([...sessions.values()].filter(value => value !== session && value.find?.info.status === 'running').length >= 2) throw new Error('Two finds are already running. Close a find popup before starting another.')
+    await stopFind(session)
+    if (session.find) resource.db.exec(`DROP TABLE IF EXISTS ${session.find.table}`)
+    const version = ++searchVersion
+    const table = `find_${version}`
+    resource.db.exec(`CREATE TEMP TABLE ${table} (ordinal INTEGER PRIMARY KEY, position INTEGER, column TEXT, start INTEGER, end INTEGER, line INTEGER)`)
+    session.find = { table, stop: false, searchVersion: request.searchVersion,
+      info: { version, status: 'running', matches: 0, scanned: 0, total: request.searchVersion === undefined ? resource.lines : session.search!.info.matches } }
+    session.find.task = findFile(session, request)
+    return session.find.info
+  }
+  if (command.type === 'find-status') {
+    if (!session.find) throw new Error('No find is active in this tab.')
+    return session.find.info
+  }
+  if (command.type === 'find-cancel') {
+    await stopFind(session)
+    if (session.find) resource.db.exec(`DROP TABLE IF EXISTS ${session.find.table}`)
+    session.find = undefined
+    return
   }
   if (command.type === 'cancel') {
     session.cancelled = true
@@ -524,6 +602,14 @@ async function handle(command: Command): Promise<unknown> {
     resource.error = error instanceof Error ? error.message : 'The file changed.'
     publish(resource)
     throw error
+  }
+  if (command.type === 'find-match') {
+    const job = session.find
+    if (!job || job.stop || command.version !== job.info.version ||
+      (job.searchVersion !== undefined && job.searchVersion !== session.search?.info.version)) throw new Error('Find results are outdated. Find the text again.')
+    const match = resource.db.prepare(`SELECT position, column, start, end, line FROM ${job.table} WHERE ordinal = ?`).get(command.ordinal) as Omit<FindMatch, 'row'> & { line: number } | undefined
+    if (!match) throw new Error('Find occurrence is outside the available results.')
+    return { position: match.position, column: match.column, start: match.start, end: match.end, row: await readRow(resource, match.line, 0, 1_000_000, command.emv) } satisfies FindMatch
   }
   if (command.type === 'locate') {
     if (!session.search || command.searchVersion !== session.search.info.version) throw new Error('Search results are outdated. Apply the search again.')

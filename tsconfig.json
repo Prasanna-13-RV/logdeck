@@ -9,8 +9,9 @@
     "noEmit": true,
     "esModuleInterop": true,
     "resolveJsonModule": true,
+    "allowImportingTsExtensions": true,
     "skipLibCheck": true,
     "types": ["node", "vite/client"]
   },
-  "include": ["src", "shared", "tests", "*.ts", "*.mts"]
+  "include": ["src", "shared", "tests", "website", "scripts", "netlify", "*.ts", "*.mts"]
 }

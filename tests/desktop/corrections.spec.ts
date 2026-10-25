@@ -3,6 +3,7 @@ import { mkdtemp, writeFile, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { receiptHex } from '../fixtures/receipt'
+import { expectFilterResults, exportRecords } from './viewerAssertions'
 
 async function launch() {
   const directory = await mkdtemp(join(tmpdir(), 'logdeck-corrections-'))
@@ -15,7 +16,7 @@ async function launch() {
   return { directory, desktop, page }
 }
 
-test('sidebar filtering is separate from highlight search, severity styling and disjoint copy/export', async () => {
+test('top-bar filtering is separate from find, severity styling and disjoint copy/export', async () => {
   const { directory, desktop, page } = await launch()
   const previousClipboard = await desktop.evaluate(({ clipboard }) => clipboard.readText())
   try {
@@ -32,26 +33,30 @@ test('sidebar filtering is separate from highlight search, severity styling and 
     if (!opened.ok) throw new Error(opened.error)
     const panel = page.locator('.tab-panel:not([hidden])')
     await expect(panel.getByRole('button', { name: 'Apply filters', exact: true })).toBeEnabled()
-    await panel.getByLabel('Filter expression', { exact: true }).fill('Core. -tag:Core.Dal')
+    await panel.getByLabel('Regex filter', { exact: true }).fill('Core\\.(?!Dal)')
     await panel.getByRole('button', { name: 'Apply filters', exact: true }).click()
-    await expect(panel.getByRole('status').filter({ hasText: 'matching records' })).toContainText('3 matching records')
+    await expectFilterResults(page, opened.value.id, 3)
     await expect(panel.locator('tbody tr')).toHaveCount(3)
     await expect(panel.locator('mark')).toHaveCount(0)
-    expect(await panel.locator('.file-sidebar').getByLabel('Filter mode').count()).toBe(1)
-    expect(await panel.locator('.viewer-toolbar').getByLabel('Search logs', { exact: true }).count()).toBe(1)
+    await expect(panel.locator('.file-sidebar')).toHaveCount(0)
+    expect(await panel.getByLabel('Filter mode').count()).toBe(0)
+    await page.keyboard.press('Control+f')
+    await expect(panel.getByRole('search')).toBeVisible()
     await expect(panel.locator('.range-navigation')).not.toContainText(/Matches|Records|Source lines|\//)
     await panel.getByLabel('Search logs', { exact: true }).fill('needle')
-    await panel.getByRole('button', { name: 'Search', exact: true }).click()
+    await expect(panel.getByRole('search').getByRole('status')).toHaveText('1 of 2 matches')
     await expect(panel.locator('tbody tr')).toHaveCount(3)
     await expect(panel.getByRole('table')).toHaveAttribute('aria-rowcount', '4')
     await expect(panel.locator('mark')).toHaveText(['needle'])
     await panel.getByLabel('Search logs', { exact: true }).fill('NOT-PRESENT')
-    await panel.getByRole('button', { name: 'Search', exact: true }).click()
+    await expect(panel.getByRole('search').getByRole('status')).toHaveText('0 of 0 matches')
     await expect(panel.locator('mark')).toHaveCount(0)
     await expect(panel.locator('tbody tr')).toHaveCount(3)
     await panel.getByRole('button', { name: 'Clear search', exact: true }).click()
-    await expect(panel.getByLabel('Filter expression')).toHaveValue('Core. -tag:Core.Dal')
+    await expect(panel.getByLabel('Regex filter')).toHaveValue('Core\\.(?!Dal)')
 
+    await panel.getByRole('button', { name: 'Close find', exact: true }).click()
+    await panel.getByRole('button', { name: 'More filters', exact: true }).click()
     await panel.getByLabel('Severity color style').selectOption('background')
     const first = panel.locator('tbody tr').nth(0)
     const warning = panel.locator('tbody tr').nth(1)
@@ -72,7 +77,7 @@ test('sidebar filtering is separate from highlight search, severity styling and 
     await expect(first).toHaveAttribute('aria-selected', 'true')
     await first.locator('.line-cell').click()
     await expect(first).toHaveAttribute('aria-selected', 'false')
-    await expect(panel.getByRole('button', { name: 'Copy selection', exact: true })).toBeDisabled()
+    await expect(panel.locator('tr.selected')).toHaveCount(0)
     await first.locator('.line-cell').click()
     await panel.locator('tbody tr').nth(2).locator('.line-cell').click({ modifiers: ['Control'] })
     await expect(panel.locator('tr.selected')).toHaveCount(2)
@@ -82,7 +87,9 @@ test('sidebar filtering is separate from highlight search, severity styling and 
     await expect.poll(() => desktop.evaluate(({ clipboard }) => clipboard.readText())).toBe(`${lines[0]}\n${lines[4]}`)
     const destination = join(directory, 'disjoint.txt')
     await desktop.evaluate(({ dialog }, path) => { dialog.showSaveDialog = async () => ({ canceled: false, filePath: path }) }, destination)
-    await panel.getByRole('button', { name: 'Export selection', exact: true }).click()
+    const filter = await page.evaluate(id => window.logdeck.searchStatus(id), opened.value.id)
+    if (!filter.ok) throw new Error(filter.error)
+    await exportRecords(page, { id: opened.value.id, searchVersion: filter.value.version, ranges: [{ start: 1, end: 1 }, { start: 3, end: 3 }] })
     await expect.poll(() => readFile(destination, 'utf8').catch(() => '')).toBe(`${lines[0]}\n${lines[4]}\n`)
     await first.locator('.line-cell').click({ modifiers: ['Control'] })
     await expect(first).toHaveAttribute('aria-selected', 'false')
@@ -91,18 +98,19 @@ test('sidebar filtering is separate from highlight search, severity styling and 
     await expect(panel.locator('tr.selected')).toHaveCount(1)
     await panel.locator('tbody tr').nth(2).locator('.line-cell').click({ modifiers: ['Shift'] })
     await expect(panel.locator('tr.selected')).toHaveCount(3)
+    await page.keyboard.press('Control+f')
     await panel.getByLabel('Search logs', { exact: true }).fill('warning')
-    await panel.getByRole('button', { name: 'Search', exact: true }).click()
+    await expect(panel.getByRole('search').getByRole('status')).toHaveText('1 of 1 matches')
     await panel.getByRole('button', { name: 'Reset filters', exact: true }).click()
     await expect(panel.locator('tbody tr')).toHaveCount(5)
     await expect(panel.locator('mark')).toHaveText(['warning'])
     await panel.getByRole('button', { name: 'Clear search', exact: true }).click()
-    await panel.getByLabel('Filter mode').selectOption('regex')
-    await panel.getByLabel('Filter expression').fill('Core\\.(Api|UI)')
+    await panel.getByLabel('Regex filter').fill('Core\\.(Api|UI)')
     await panel.getByRole('button', { name: 'Apply filters', exact: true }).click()
-    await expect(panel.getByRole('status').filter({ hasText: 'matching records' })).toContainText('3 matching records')
+    await expectFilterResults(page, opened.value.id, 3)
     await expect(panel.locator('mark')).toHaveCount(0)
     await page.reload()
+    await panel.getByRole('button', { name: 'More filters', exact: true }).click()
     await expect(panel.getByLabel('Severity color style')).toHaveValue('text')
     expect(await readFile(source, 'utf8')).toBe(lines.join('\n'))
   } finally {

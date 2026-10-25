@@ -351,7 +351,9 @@ Include system-following appearance and persist manual choice. The compact table
 workspace uses collapsible filter and EMV/detail sidebars. Subtle finite transitions
 respect reduced motion and never animate log rows. Home uses a prominent drop area,
 feature cards below it, and a navbar Features action.
-Show future Firebase Login only as a labeled Coming later explanatory dialog.
+Login offers optional Firebase email/password company-tag access. Unconfigured
+builds disable credentials/downloads with a clear explanation; local viewing
+never requires authentication. See [website and Firebase setup](Firebase-and-website-setup.md).
 
 Future customization:
 

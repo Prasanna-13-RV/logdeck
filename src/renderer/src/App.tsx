@@ -1,23 +1,26 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
-import { Activity, Calculator, Columns2, FolderOpen, Monitor, Moon, Plus, Settings2, ShieldCheck, Sun, UserRound, X, AppWindow, CreditCard } from 'lucide-react'
+import { Activity, Calculator, Columns2, FolderOpen, Monitor, Moon, Plus, Settings2, ShieldCheck, Sun, UserRound, X, AppWindow, CreditCard, RefreshCw } from 'lucide-react'
 import type { Result, SessionInfo, Theme } from '../../../shared/contracts'
 import { useWorkspace } from './state'
 import { Home } from './components/Home'
 import { SplitWorkspace } from './components/SplitWorkspace'
 import { LocalSettings } from './components/LocalSettings'
+import { CompanyTagSettings } from './components/CompanyTagSettings'
+import { UpdatePage } from './components/UpdatePage'
 import { Modal } from './components/Modal'
 import { ConversionTool, EmvTool } from './components/Tools'
 import type { EmvSeed } from '../../../shared/emvTracker'
+import type { UpdateCheckResult } from '../../../shared/releases'
 
 const Compare = lazy(() => import('./components/Compare'))
 type Dialog = 'login' | 'settings' | null
-type Tab = { id: string; kind: 'home' | 'calculator' | 'emv' | 'compare'; seed?: EmvSeed } | { id: string; kind: 'log'; session: SessionInfo; second?: SessionInfo }
+type Tab = { id: string; kind: 'home' | 'calculator' | 'emv' | 'compare' | 'updates'; seed?: EmvSeed } | { id: string; kind: 'log'; session: SessionInfo; second?: SessionInfo }
 const themeOptions: { value: Theme; label: string; icon: typeof Moon }[] = [
   { value: 'light', label: 'Light', icon: Sun },
   { value: 'dark', label: 'Dark', icon: Moon },
   { value: 'system', label: 'System', icon: Monitor }
 ]
-const title = (tab: Tab) => tab.kind === 'log' ? tab.session.name : tab.kind === 'home' ? 'New tab' : tab.kind === 'calculator' ? 'Hex / ASCII' : tab.kind === 'compare' ? 'Text Compare' : 'EMV workspace'
+const title = (tab: Tab) => tab.kind === 'log' ? tab.session.name : tab.kind === 'home' ? 'New tab' : tab.kind === 'calculator' ? 'Hex / ASCII' : tab.kind === 'compare' ? 'Text Compare' : tab.kind === 'updates' ? 'Updates' : 'EMV workspace'
 
 export function App() {
   const { theme, setTheme } = useWorkspace()
@@ -33,10 +36,25 @@ export function App() {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [appearanceReady, setAppearanceReady] = useState(false)
+  const [navbarVisible, setNavbarVisible] = useState(true)
+  const [tabsVisible, setTabsVisible] = useState(true)
+  const [logsOnly, setLogsOnly] = useState(false)
+  const [startupUpdate, setStartupUpdate] = useState<UpdateCheckResult | null>(null)
+  const [updateError, setUpdateError] = useState('')
+  const [updateDismissed, setUpdateDismissed] = useState(false)
   const openingHome = useRef<string | null>(null)
   const compareState = useRef(new Map<string, { dirty: boolean; busy: boolean }>())
   const splitting = useRef(false)
   const compareStatus = useCallback((id: string, dirty: boolean, busy: boolean) => { compareState.current.set(id, { dirty, busy }) }, [])
+  useEffect(() => {
+    let stopped = false
+    void window.logdeck.startupUpdateCheck().then(result => {
+      if (stopped) return
+      if (!result.ok) setUpdateError(result.error)
+      else setStartupUpdate(result.value)
+    }).catch(error => { if (!stopped) setUpdateError(String(error)) })
+    return () => { stopped = true }
+  }, [])
 
   const receive = useCallback((info: SessionInfo) => {
     if (closedSessions.current.has(info.id)) return
@@ -44,6 +62,11 @@ export function App() {
     knownSessions.current.add(info.id)
     const home = openingHome.current ?? activeRef.current
     setTabs(previous => {
+      if (info.splitParentId) {
+        const parent = previous.find(tab => tab.id === info.splitParentId && tab.kind === 'log')
+        if (parent) return previous.map(tab => tab === parent ? { ...parent, second: info } : tab)
+        return previous
+      }
       const parent = previous.find(tab => tab.kind === 'log' && tab.second?.id === info.id)
       if (parent?.kind === 'log') return previous.map(tab => tab.id === parent.id ? { ...parent, second: info } : tab)
       const existing = previous.find(tab => tab.id === info.id)
@@ -52,7 +75,7 @@ export function App() {
       if (previous.some(tab => tab.id === home && tab.kind === 'home')) return previous.map(tab => tab.id === home ? next : tab)
       return [...previous, next]
     })
-    if (first) setActive(info.id)
+    if (first && !info.splitParentId) setActive(info.id)
   }, [])
 
   const removeTab = useCallback((id: string) => {
@@ -81,7 +104,8 @@ export function App() {
     })
     void window.logdeck.getSessions().then(async result => {
       if (!result.ok) { setError(result.error); return }
-      result.value.forEach(receive)
+      result.value.filter(info => !info.splitParentId).forEach(receive)
+      result.value.filter(info => info.splitParentId).forEach(receive)
       const current = await window.logdeck.getSession()
       if (!current.ok) setError(current.error)
       else if (current.value) setActive(current.value.id)
@@ -109,7 +133,7 @@ export function App() {
     return () => system.removeEventListener('change', apply)
   }, [theme, appearanceReady])
 
-  const newTab = useCallback((kind: 'home' | 'calculator' | 'emv' | 'compare' = 'home', seed?: EmvSeed) => {
+  const newTab = useCallback((kind: 'home' | 'calculator' | 'emv' | 'compare' | 'updates' = 'home', seed?: EmvSeed) => {
     if (kind === 'compare' && tabsRef.current.filter(tab => tab.kind === 'compare').length >= 2) { setError('Two Compare workspaces are already open. Close one before opening another.'); return }
     if (tabsRef.current.length >= 20) { setError('Close a tab or use a new window (20 tabs per window).'); return }
     const tab: Tab = { id: crypto.randomUUID(), kind, seed }
@@ -181,6 +205,7 @@ export function App() {
   const newWindow = () => void window.logdeck.newWindow().then(result => { if (!result.ok) setError(result.error) }).catch(error => setError(String(error)))
   useEffect(() => {
     const keyboard = (event: KeyboardEvent) => {
+      if (event.key === 'F11') { event.preventDefault(); setLogsOnly(value => !value); return }
       if (!event.ctrlKey) return
       const key = event.key.toLowerCase()
       if (key === 'o') { event.preventDefault(); pick() }
@@ -213,36 +238,48 @@ export function App() {
     }))
   }
   return (
-    <div className="app-shell">
-      <header className="navbar">
+    <div className={`app-shell ${logsOnly ? 'logs-only' : ''}`}>
+      {(!navbarVisible || !tabsVisible || logsOnly) && <button className="restore-layout secondary-button" onClick={() => { setNavbarVisible(true); setTabsVisible(true); setLogsOnly(false) }}>Show navigation and tabs</button>}
+      {navbarVisible && <header className="navbar">
         <button className="brand" aria-label="LogDeck home" onClick={() => showHome()}><span className="brand-mark"><Activity size={23} /></span><span>LogDeck<span className="brand-period">.</span></span></button>
         <nav aria-label="Main navigation">
           <button className="nav-link" onClick={() => showHome(true)}>Features</button>
           <button className="nav-link" onClick={() => newTab('emv')}><CreditCard size={15} /> EMV</button>
           <button className="nav-link" onClick={() => newTab('calculator')}><Calculator size={15} /> Hex / ASCII</button>
           <button className="nav-link" onClick={() => newTab('compare')}><Columns2 size={15} /> Compare</button>
+          <button className="nav-link" onClick={() => newTab('updates')}><RefreshCw size={15} /> Updates</button>
         </nav>
         <div className="navbar-actions">
+          <button className="icon-button" aria-label="Logs only (F11)" title="Logs only (F11)" onClick={() => setLogsOnly(true)}><Monitor size={18} /></button>
+          <button className="icon-button" aria-label="Hide navigation" title="Hide navigation" onClick={() => setNavbarVisible(false)}><X size={16} /></button>
           <button className="nav-open" onClick={pick} disabled={busy}><FolderOpen size={16} /> Open file</button>
           <button className="icon-button" aria-label="New window" title="New window (Ctrl+N)" onClick={newWindow}><AppWindow size={18} /></button>
           <button className="icon-button" aria-label="Appearance and settings" onClick={() => setDialog('settings')}><Settings2 size={18} /></button>
           <button className="icon-button" aria-label={`Theme: ${theme}. Switch theme`} onClick={() => setTheme(theme === 'dark' ? 'light' : theme === 'light' ? 'system' : 'dark')}>{theme === 'system' ? <Monitor size={18} /> : theme === 'dark' ? <Moon size={18} /> : <Sun size={18} />}</button>
-          <button className="login-button" onClick={() => setDialog('login')}><UserRound size={15} />Login<span className="small-badge">COMING LATER</span></button>
+          <button className="login-button" onClick={() => setDialog('login')}><UserRound size={15} />Login<span className="small-badge">COMPANY TAGS</span></button>
         </div>
-      </header>
-      <div className="browser-tabs" role="tablist" aria-label="Workspace tabs">
+      </header>}
+      {tabsVisible && <div className="browser-tabs" role="tablist" aria-label="Workspace tabs">
         {tabs.map(tab => <div className={`browser-tab ${tab.id === active ? 'active' : ''}`} key={tab.id}>
           <button role="tab" aria-selected={tab.id === active} aria-controls={`panel-${tab.id}`} id={`tab-${tab.id}`} title={title(tab)} onClick={() => setActive(tab.id)}>{title(tab)}{tab.kind === 'log' && tab.session.synthetic && <span className="synthetic-label">SYNTHETIC</span>}</button>
           <button className="icon-button" aria-label={tab.kind === 'log' ? 'Close file' : `Close ${title(tab)}`} title={`Close ${title(tab)} (Ctrl+W)`} onClick={() => void closeTab(tab.id).catch(error => setError(String(error)))}><X size={13} /></button>
         </div>)}
         <button className="icon-button" aria-label="New tab" title="New tab (Ctrl+T)" onClick={() => newTab()}><Plus size={17} /></button>
-      </div>
+        <button className="icon-button" aria-label="Hide tab bar" title="Hide navigation and tab bar" onClick={() => { setTabsVisible(false); setNavbarVisible(false) }}><X size={15} /></button>
+      </div>}
       {error && <div className="error-banner" role="alert"><span>{error}</span><button className="icon-button" aria-label="Dismiss error" onClick={() => setError(null)}><X size={16} /></button></div>}
+      {!updateDismissed && (startupUpdate?.updateAvailable || updateError) && <div className="startup-update" role="status" aria-label="Startup update notice">
+        <span>{updateError ? `Could not check for updates: ${updateError}` : `LogDeck ${startupUpdate!.latestVersion} is available (installed: ${startupUpdate!.currentVersion}).`}</span>
+        <button className="text-button" onClick={() => newTab('updates')}>{updateError ? 'Retry in Updates' : 'View update'}</button>
+        {!updateError && <button className="text-button" onClick={() => void window.logdeck.openDownloadPage().then(result => { if (!result.ok) setUpdateError(result.error) }).catch(error => setUpdateError(String(error)))}>Download page</button>}
+        <button className="icon-button" aria-label="Dismiss update notice" onClick={() => setUpdateDismissed(true)}><X size={16} /></button>
+      </div>}
       {tabs.map(tab => <section className="tab-panel" role="tabpanel" id={`panel-${tab.id}`} aria-labelledby={`tab-${tab.id}`} hidden={tab.id !== active} key={tab.id}>
         {tab.kind === 'log' ? <SplitWorkspace session={tab.session} second={tab.second} active={tab.id === active} onError={setError} onEmv={seed => newTab('emv', seed)} onSplit={() => void splitTab(tab.id)} onCloseSplit={() => {
           if (tab.second) void window.logdeck.closeFile(tab.second.id).then(result => { if (!result.ok) setError(result.error) }).catch(error => setError(String(error)))
         }} /> : tab.kind === 'compare' ? <Suspense fallback={<div role="status">Loading local Compare editor...</div>}><Compare tabId={tab.id} active={tab.id === active} onStatus={compareStatus} onError={setError} /></Suspense> :
           tab.kind === 'calculator' ? <ConversionTool /> : tab.kind === 'emv' ? <EmvTool seed={tab.seed} /> :
+          tab.kind === 'updates' ? <UpdatePage startupResult={startupUpdate} /> :
           <Home busy={busy} onOpen={pick} onDemo={() => void open(() => window.logdeck.openDemo())} onDrop={files => {
             if (files.length !== 1) { setError('Drop exactly one .log or .logcat file at a time.'); return }
             try {
@@ -258,9 +295,10 @@ export function App() {
           <div className="theme-options">{themeOptions.map(option => <button className={`theme-option ${theme === option.value ? 'chosen' : ''}`} aria-pressed={theme === option.value} key={option.value} onClick={() => setTheme(option.value)}><option.icon size={23} />{option.label}</button>)}</div>
           <div className="settings-note"><ShieldCheck size={18} /><span>Log files stay local. No telemetry, login, or network connection is required.</span></div>
           <LocalSettings onError={setError} />
-          <h3>Keyboard shortcuts</h3><div className="shortcut-list"><span>Open file<kbd>Ctrl O</kbd></span><span>New tab / close tab<kbd>Ctrl T / W</kbd></span><span>Next / previous tab<kbd>Ctrl (Shift) Tab</kbd></span><span>New independent window<kbd>Ctrl N</kbd></span><span>Find<kbd>Ctrl F</kbd></span><span>Go to source line / record<kbd>Ctrl G</kbd></span><span>Copy selected records<kbd>Ctrl Shift C</kbd></span><span>Extend record selection<kbd>Shift click / Enter</kbd></span><span>Resize focused column separator<kbd>Left / Right</kbd></span><span>Next / previous matching record<kbd>(Shift) F3</kbd></span><span>Compare undo / redo<kbd>Ctrl Z / Y</kbd></span><span>Close dialog<kbd>Esc</kbd></span></div>
+          <h3>Keyboard shortcuts</h3><div className="shortcut-list"><span>Open file<kbd>Ctrl O</kbd></span><span>New tab / close tab<kbd>Ctrl T / W</kbd></span><span>Next / previous tab<kbd>Ctrl (Shift) Tab</kbd></span><span>New independent window<kbd>Ctrl N</kbd></span><span>Find<kbd>Ctrl F</kbd></span><span>Next / previous text match in Find<kbd>(Shift) Enter / F3</kbd></span><span>Toggle logs-only mode<kbd>F11</kbd></span><span>Go to source line / record<kbd>Ctrl G</kbd></span><span>Copy selected records<kbd>Ctrl Shift C</kbd></span><span>Extend record selection<kbd>Shift click / Enter</kbd></span><span>Resize focused column separator<kbd>Left / Right</kbd></span><span>Compare undo / redo<kbd>Ctrl Z / Y</kbd></span><span>Close dialog / Find<kbd>Esc</kbd></span></div>
         </> : <>
-          <p>Firebase authentication will be introduced in a later release for account-connected features.</p><p className="muted">You can open and inspect saved logs without signing in. This preview does not collect credentials or pretend to authenticate.</p>
+          <p className="muted">Open saved logs without an account. Optional Firebase sign-in is only for downloading company tag definitions; logs never leave this machine.</p>
+          <CompanyTagSettings />
         </>}
       </Modal>}
     </div>

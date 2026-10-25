@@ -1,0 +1,16 @@
+{
+  "firestore": { "rules": "firestore.rules" },
+  "emulators": { "firestore": { "host": "127.0.0.1", "port": 8088 }, "ui": { "enabled": false }, "singleProjectMode": true },
+  "hosting": {
+    "public": "website/dist",
+    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+    "rewrites": [{ "source": "**", "destination": "/index.html" }],
+    "headers": [
+      { "source": "**", "headers": [
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "Referrer-Policy", "value": "no-referrer" },
+        { "key": "Content-Security-Policy", "value": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'" }
+      ] }
+    ]
+  }
+}

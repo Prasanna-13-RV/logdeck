@@ -1,4 +1,4 @@
-import { emvDefinition } from './emvDictionary'
+import { emvDefinition, type EmvDefinition } from './emvDictionary'
 import { parseTlv, type TlvNode } from './emvTlv'
 
 export interface EmvOccurrence {
@@ -27,7 +27,7 @@ function validation(tag: string, value: string | undefined, declared?: number): 
   return { value: hex, status: 'valid', detail: 'Hexadecimal bytes and available length checks passed. Content semantics are not certified.' }
 }
 
-export function trackEmv(input: string, incomplete = false): EmvTracking {
+export function trackEmv(input: string, incomplete = false, companyTags: readonly EmvDefinition[] = []): EmvTracking {
   const result: EmvTracking = { occurrences: [], notices: [] }
   const text = input.slice(0, emvTrackingLimits.characters)
   if (input.length > text.length || incomplete) result.notices.push('Partial displayed segment: values at its boundary are not validated; other segments are not scanned.')
@@ -82,7 +82,7 @@ export function trackEmv(input: string, incomplete = false): EmvTracking {
       const after = content.slice(start + candidate[0].length)
       const separator = /^(?:[ \t]*\[(\d+)\])?[ \t]*(?:(?:value[ \t]*)?[:=])[ \t]*/i.exec(after)
       const contextual = /\b(?:emv|tlv|tag)\b/i.test(before)
-      if (!labelled && !(separator && (tag.length > 2 || contextual) && emvDefinition(tag))) continue
+      if (!labelled && !(separator && (tag.length > 2 || contextual) && (emvDefinition(tag) || companyTags.some(value => value.tag === tag)))) continue
       const rawValue = separator ? after.slice(separator[0].length).split(/[;,]|\s+(?:tag|length|len|value)\s*[:=]/i)[0].trim() : undefined
       const declared = separator?.[1] === undefined ? undefined : Number(separator[1])
       const verified = boundary && rawValue !== undefined
