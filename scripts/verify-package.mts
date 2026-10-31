@@ -92,7 +92,7 @@ async function waitForDebugPort(profile: string, child: ReturnType<typeof spawn>
       const port = (await readFile(join(profile, 'DevToolsActivePort'), 'utf8')).split('\n')[0]
       if (/^\d+$/.test(port)) return port
     } catch (error) {
-      if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) throw error
+      if (!(error instanceof Error && 'code' in error && ['ENOENT', 'EBUSY', 'EPERM'].includes(String(error.code)))) throw error
     }
     await delay(200)
   }
@@ -120,7 +120,11 @@ for ($i = $ids.Count - 1; $i -ge 0; $i--) {
     Stop-Process -Id $ids[$i] -Force -ErrorAction SilentlyContinue
     try { if (-not $process.WaitForExit(10000)) { throw "Test process $($ids[$i]) did not stop." } } catch [System.InvalidOperationException] { }
   }
-}`
+}
+# A silenced Stop-Process failure would otherwise leak a non-zero exit code; only live survivors are errors.
+$alive = @($ids | Where-Object { Get-Process -Id $_ -ErrorAction SilentlyContinue })
+if ($alive.Count -gt 0) { throw "Test processes still running: $($alive -join ', ')" }
+exit 0`
   console.error(`Stopping test-owned launcher process tree ${child.pid} after cleanup timeout.`)
   await promisify(execFile)('powershell.exe', ['-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')])
 }
