@@ -1,5 +1,7 @@
 import { useEffect, useState, type MouseEvent } from 'react'
-import { Activity, ArrowDownToLine, ArrowRight, HardDrive, Moon, ShieldCheck, Sun } from 'lucide-react'
+import { ArrowDownToLine, ArrowRight, HardDrive, Moon, ShieldCheck, Sun } from 'lucide-react'
+import brandMark from '../../images/brand-mark.png'
+import brandPortrait from '../../images/brand-portrait.png'
 import { features } from '../../src/renderer/src/components/Home'
 import { Admin } from './admin'
 import { parseReleaseManifest, type ReleaseManifest } from '../../shared/releases'
@@ -61,7 +63,7 @@ export function Website() {
   return <div className="website">
     <a className="skip-link" href="#main">Skip to content</a>
     <header className="navbar">
-      <a className="brand" href="/" onClick={event => link(event, '/')} aria-label="LogDeck home"><span className="brand-mark"><Activity size={25} /></span>LogDeck<span className="brand-period">.</span></a>
+      <a className="brand" href="/" onClick={event => link(event, '/')} aria-label="LogDeck home"><img className="brand-logo" src={brandMark} alt="" />LogDeck<span className="brand-period">.</span></a>
       <nav aria-label="Main navigation">{nav('/', 'Home')}{nav('/features', 'Features')}{nav('/download', 'Download app')}</nav>
       <div className="navbar-actions"><button className="icon-button" aria-label={dark ? 'Switch to light theme' : 'Switch to dark theme'} onClick={() => setDark(!dark)}>{dark ? <Sun size={20} /> : <Moon size={20} />}</button></div>
     </header>
@@ -69,6 +71,7 @@ export function Website() {
     <main id="main" className="site-main">
       {path === '/' ? <>
         <section className="hero site-hero">
+          <img className="page-brand-logo" src={brandMark} alt="LogDeck" width={160} height={160} />
           <div className="eyebrow"><span className="status-dot" />YOUR LOGS. YOUR MACHINE.</div>
           <h1>Less noise.<br /><span>More understanding.</span></h1>
           <p className="hero-copy">Your focused desktop workspace for logcat, saved logs,<br className="wide-break" /> EMV investigation and confident comparison.</p>
@@ -95,6 +98,7 @@ export function Website() {
           <article className="tool-card"><h2>Local-first, honestly scoped.</h2><p>Worker-backed indexing and virtualized tables keep data bounded. Compare supports 10 MB / 100,000 lines per side. Full viewer 500 MB / 10-million-entry performance is not yet certified. No live ADB or exhaustive scheme database is claimed.</p></article>
         </section>
       </> : path === '/download' ? <section className="hero download-page">
+        <img className="page-brand-logo" src={brandMark} alt="LogDeck" width={160} height={160} />
         <div className="eyebrow">YOUR DESKTOP WORKSPACE</div><h1>Bring the focus<br /><span>to your machine.</span></h1>
         <p className="hero-copy">LogDeck preview / Windows 10 and 11</p>
         <article className="tool-card download-card"><ArrowDownToLine size={32} /><h2>LogDeck for Windows</h2>
@@ -109,7 +113,7 @@ export function Website() {
         <p className="muted">Windows x64 portable EXE: save it in a permanent folder and run it, with no installation wizard. Optional Settings &gt; Open with LogDeck registration does not change default apps. After updating or moving the EXE, enable it again. Preferences and rebuildable caches use your Windows account folders, not the EXE folder. Unsigned builds can display a Windows SmartScreen warning; verify the publisher and checksum before running. macOS and Linux builds are not offered.</p>
       </section> : path === '/admin' ? <Admin /> : <section className="hero"><h1>Page not found.</h1>{nav('/', 'Back to LogDeck')}</section>}
     </main>
-    <footer className="home-footer site-footer"><span>LogDeck / Your logs. Your machine.</span><div>{nav('/admin', 'Company admin')}<span> No log uploads. No analytics.</span></div></footer>
+    <footer className="home-footer site-footer"><span className="footer-brand"><img src={brandPortrait} alt="" />LogDeck / Your logs. Your machine.</span><div>{nav('/admin', 'Company admin')}<span> No log uploads. No analytics.</span></div></footer>
   </div>
 }
 

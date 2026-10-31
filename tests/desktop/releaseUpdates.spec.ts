@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { version } from '../../package.json'
 
-test('Update page shows installed version and keeps checks/downloads disabled when unconfigured', async () => {
+test('GitHub checks use the main-process version and leave unconfigured website downloads disabled', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'logdeck-update-'))
   const env = Object.fromEntries(Object.entries(process.env).filter((entry): entry is [string, string] => typeof entry[1] === 'string'))
   env.LOGDECK_TEST_USER_DATA = directory
@@ -13,23 +13,48 @@ test('Update page shows installed version and keeps checks/downloads disabled wh
   try {
     const page = await desktop.firstWindow()
     await page.waitForFunction(() => Boolean(window.logdeck))
-    const requests: string[] = []
-    page.on('request', request => { if (/^https?:/.test(request.url())) requests.push(request.url()) })
+    await expect(page.locator('.brand-logo')).toBeVisible()
+    await expect.poll(() => page.locator('.brand-logo').evaluate((image: HTMLImageElement) => image.complete && image.naturalWidth > 0)).toBe(true)
+    const homeLogo = page.locator('.home .page-brand-logo')
+    await expect(homeLogo).toBeVisible()
+    await expect.poll(() => homeLogo.evaluate((image: HTMLImageElement) => image.complete && image.naturalWidth > 0)).toBe(true)
+    await desktop.evaluate(() => {
+      globalThis.fetch = async (url, init) => {
+        if (String(url) !== 'https://raw.githubusercontent.com/Prasanna-13-RV/logdeck/main/version.json' ||
+            init?.redirect !== 'error') throw new Error('Unexpected version request')
+        return Response.json({ version: '1.10.0', releaseNotes: 'GitHub main-process integration' })
+      }
+    })
     await page.getByRole('button', { name: /Updates/ }).click()
     const update = page.locator('.tab-panel:not([hidden])')
+    await expect(update.getByRole('img', { name: 'LogDeck', exact: true })).toBeVisible()
+    await expect.poll(() => update.locator('.page-brand-logo').evaluate((image: HTMLImageElement) => image.complete && image.naturalWidth > 0)).toBe(true)
     await expect(update.getByLabel('Installed version')).toHaveText(version)
-    await expect(update.getByLabel('Latest website release')).toHaveText('Not checked')
-    await expect(update.getByRole('status')).toContainText('Release checking is not configured')
-    await expect(update.getByRole('button', { name: 'Check for updates' })).toBeDisabled()
+    await expect(update.getByRole('button', { name: 'Check for updates' })).toBeEnabled()
     await expect(update.getByRole('button', { name: 'Official download page' })).toBeDisabled()
-    expect(requests).toEqual([])
+    await update.getByRole('button', { name: 'Check for updates' }).click()
+    await expect(update.getByLabel('Latest GitHub version')).toHaveText('1.10.0')
+    await expect(update.getByRole('region', { name: 'Release notes' })).toContainText('GitHub main-process integration')
+    const checked = await page.evaluate(() => window.logdeck.checkForUpdates())
+    expect(checked.ok && checked.value.currentVersion).toBe(version)
+    expect(await page.evaluate(() => ({
+      nodeRequire: 'require' in window, nodeProcess: 'process' in window,
+      unrestrictedIpc: 'ipcRenderer' in window.logdeck
+    }))).toEqual({ nodeRequire: false, nodeProcess: false, unrestrictedIpc: false })
+    await desktop.evaluate(({ ipcMain }) => {
+      ipcMain.removeHandler('updates:check')
+      ipcMain.handle('updates:check', () => ({ ok: false, error: 'GitHub version.json was not found (404). Confirm the public repository, configured branch, and published file path.' }))
+    })
+    await update.getByRole('button', { name: 'Check for updates' }).click()
+    await expect(update.getByRole('alert')).toContainText('GitHub version.json was not found (404)')
+    await expect(update.getByLabel('Latest GitHub version')).toHaveText('Not checked')
   } finally {
     await desktop.close()
     await rm(directory, { recursive: true, force: true })
   }
 })
 
-test('startup notice shows newer version, opens Updates and surfaces unavailable checks without blocking logs', async () => {
+test('startup notification is dismissible and appears only for a successful newer-version result', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'logdeck-startup-update-'))
   const env = Object.fromEntries(Object.entries(process.env).filter((entry): entry is [string, string] => typeof entry[1] === 'string'))
   env.LOGDECK_TEST_USER_DATA = directory
@@ -46,17 +71,17 @@ test('startup notice shows newer version, opens Updates and surfaces unavailable
       } }))
       ipcMain.removeHandler('updates:info')
       ipcMain.handle('updates:info', () => ({ ok: true, value: { configured: true, currentVersion } }))
-      ipcMain.removeHandler('updates:open-download')
-      ipcMain.handle('updates:open-download', () => ({ ok: false, error: 'Synthetic download failure' }))
     }, version)
     await page.reload()
     const notice = page.getByRole('status', { name: 'Startup update notice', exact: true })
     await expect(notice).toContainText('LogDeck 99.0.0 is available')
+    await expect(notice).toContainText(`Installed: ${version}`)
+    await expect(notice).toContainText('Latest: 99.0.0')
+    await expect(notice).toContainText('Synthetic release notes')
     await expect(page.getByRole('button', { name: 'Browse files', exact: true })).toBeEnabled()
-    await notice.getByRole('button', { name: 'View update', exact: true }).click()
-    await expect(page.locator('.tab-panel:not([hidden])').getByLabel('Latest website release')).toHaveText('99.0.0')
-    await notice.getByRole('button', { name: 'Download page', exact: true }).click()
-    await expect(notice).toContainText('Synthetic download failure')
+    await expect(notice.getByRole('button')).toHaveCount(1)
+    await page.getByRole('button', { name: 'Updates', exact: true }).click()
+    await expect(page.locator('.tab-panel:not([hidden])').getByLabel('Latest GitHub version')).toHaveText('99.0.0')
     await notice.getByRole('button', { name: 'Dismiss update notice', exact: true }).click()
     await expect(notice).toHaveCount(0)
     await desktop.evaluate(({ ipcMain }) => {
@@ -64,8 +89,21 @@ test('startup notice shows newer version, opens Updates and surfaces unavailable
       ipcMain.handle('updates:startup', () => ({ ok: false, error: 'Synthetic offline check' }))
     })
     await page.reload()
-    await expect(notice).toContainText('Could not check for updates: Synthetic offline check')
-    await expect(notice.getByRole('button', { name: 'Retry in Updates', exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Browse files', exact: true })).toBeVisible()
+    await page.getByRole('button', { name: 'Updates', exact: true }).click()
+    await expect(page.locator('.tab-panel:not([hidden])').getByRole('alert')).toContainText('Synthetic offline check')
+    await expect(notice).toHaveCount(0)
+    await desktop.evaluate(({ ipcMain }, currentVersion) => {
+      ipcMain.removeHandler('updates:startup')
+      ipcMain.handle('updates:startup', () => ({ ok: true, value: {
+        configured: true, currentVersion, latestVersion: '0.0.0', updateAvailable: false,
+        releaseNotes: '', checkedAt: new Date().toISOString()
+      } }))
+    }, version)
+    await page.reload()
+    await page.getByRole('button', { name: 'Updates', exact: true }).click()
+    await expect(page.locator('.tab-panel:not([hidden])').getByLabel('Latest GitHub version')).toHaveText('0.0.0')
+    await expect(notice).toHaveCount(0)
     await desktop.evaluate(({ ipcMain }, currentVersion) => {
       ipcMain.removeHandler('updates:startup')
       ipcMain.handle('updates:startup', () => ({ ok: true, value: {
@@ -75,6 +113,8 @@ test('startup notice shows newer version, opens Updates and surfaces unavailable
     }, version)
     await page.reload()
     await expect(page.getByRole('button', { name: 'Browse files', exact: true })).toBeVisible()
+    await page.getByRole('button', { name: 'Updates', exact: true }).click()
+    await expect(page.locator('.tab-panel:not([hidden])').getByLabel('Latest GitHub version')).toHaveText(version)
     await expect(notice).toHaveCount(0)
   } finally {
     await desktop.close()

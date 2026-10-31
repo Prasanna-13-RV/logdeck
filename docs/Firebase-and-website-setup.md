@@ -226,7 +226,7 @@ token is required for a public repository. Browser caching is 60 seconds; Netlif
 CDN caching is five minutes. The function bounds requests to eight seconds / 256 KB.
 GitHub failures, rate limits, private repositories and missing/incomplete releases
 return 503 with an explicit UI error, never an invented version or working download.
-The app's startup and manual checks remain same-origin, timeout/size bounded, and
+The website's release metadata remains same-origin, timeout/size bounded, and
 redirect-free. Logs and Firebase credentials never go to this endpoint.
 
 The source static manifest remains useful for local Vite previews, but the forced
@@ -338,7 +338,10 @@ Select the default in Windows **Settings > Apps > Default apps** if desired.
 Spaces and Unicode paths are supported; opened files remain read-only.
 Click **Remove Open with registration** before deleting the app.
 
-Updates use **startup notice or manual check -> official Download page -> download EXE -> close
+Desktop checks now read root GitHub `version.json`; see
+[GitHub version notifications](GitHub-version-checking.md) for setup and testing.
+The startup notice is notification-only; failed checks do not show it.
+Users can still use **Updates -> official Download page -> download EXE -> close
 the old app -> run the new EXE**. Re-enable Open with from the new version/location.
 The old filename registration will not magically follow a moved EXE. Preferences,
 company pack cache and indexes remain in the account's app-data folders, so this
@@ -387,12 +390,13 @@ The website serves the public static manifest at
 ```
 
 The local preparation command maintains this snapshot. On Netlify the Function
-instead reads the published GitHub release as described above. The app displays its embedded `app.getVersion()`
-and compares it with `latestVersion` once per main-process lifetime at startup.
-A newer version produces a nonblocking notice; users can also select **Updates**
-and click **Check for updates** to retry manually. The public website displays this same manifest.
+instead reads the published GitHub release as described above. This metadata still
+serves the public website/download flow. The desktop now independently compares
+`app.getVersion()` with `version` from root GitHub `version.json` once per startup
+or on a manual retry; see [the desktop guide](GitHub-version-checking.md).
 
-The desktop build uses these settings:
+The existing website/download build uses these settings (the GitHub checker uses
+`version-check.config.json` instead):
 
 ```dotenv
 VITE_WEBSITE_URL=https://YOUR_SITE
@@ -403,15 +407,12 @@ VITE_WINDOWS_DOWNLOAD_URL=
 
 The manifest URL must be HTTPS and same-origin with `VITE_WEBSITE_URL`; the
 download action opens the fixed `/download` path on that configured website. The
-release manifest is public metadata, limited to 32 KB, with redirects disabled
-during desktop checks. No download, EXE replacement or installation occurs;
-startup checks are asynchronous and do not block log viewing. Failed startup
-checks display an error with a manual retry link, and are not automatically retried.
-Only public release metadata is requested; no logs, sign-in data or company tags
-are sent. Unconfigured builds make no request. Publishing a newer complete release
-is enough for an already-configured desktop app's next launch or manual check.
-Changing the app's configured
-website URL requires rebuilding the desktop app.
+release manifest remains separate from the root GitHub version file.
+No download, EXE replacement or installation occurs automatically. Desktop checks
+send no logs, sign-in data or company tags, and failures do not produce an update
+notice. Publish root `version.json` when a newer binary is actually available.
+Changing the app's configured website URL or GitHub repository/branch requires
+rebuilding the desktop app.
 
 ## 9. Production sign-off
 

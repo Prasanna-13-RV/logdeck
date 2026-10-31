@@ -2,12 +2,14 @@ import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 import react from '@vitejs/plugin-react'
 import { resolve } from 'node:path'
 import { loadEnv } from 'vite'
+import versionCheck from './version-check.config.json'
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), 'VITE_')
   return {
   main: {
     define: {
+      __LOGDECK_VERSION__: JSON.stringify(versionCheck),
       __LOGDECK_FIREBASE__: JSON.stringify({ apiKey: env.VITE_FIREBASE_API_KEY ?? '', projectId: env.VITE_FIREBASE_PROJECT_ID ?? '' }),
       __LOGDECK_RELEASE__: JSON.stringify({
         manifestUrl: env.VITE_UPDATE_MANIFEST_URL ?? '',

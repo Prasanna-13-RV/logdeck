@@ -31,8 +31,15 @@ export class LineScanner {
 
 const threadtime = /^((?:\d{4}-)?\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\.\d+)\s+(\d+)\s+(\d+)\s+([VDIWEFA])\s+(.+?)\s*:\s?(.*)$/
 
+const log4j = /^\[(\d{2}\/\d{2}\/\d{4}\s+\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:[+-]\d{4})?)\]\s+(TRACE|DEBUG|INFO|WARN|ERROR|FATAL)\s+\[([^\]]*)\]\s+-\s?(.*)$/
+const log4jLevels: Record<string, LogLevel> = { TRACE: 'V', DEBUG: 'D', INFO: 'I', WARN: 'W', ERROR: 'E', FATAL: 'F' }
+
 export function parseLogLine(raw: string) {
   const match = threadtime.exec(raw)
+  if (!match) {
+    const l4j = log4j.exec(raw)
+    if (l4j) return { raw, time: l4j[1], pid: '', tid: '', level: log4jLevels[l4j[2]], tag: l4j[3], message: l4j[4] }
+  }
   if (!match) return { raw, time: '', pid: '', tid: '', level: '' as LogLevel, tag: '', message: raw }
   return {
     raw, time: match[1], pid: match[2], tid: match[3],

@@ -1,4 +1,6 @@
 import { ArrowDownToLine, ArrowRight, Columns2, FileText, FolderOpen, HardDrive, Layers3, Search, ShieldCheck, Sparkles, Upload } from 'lucide-react'
+import brandPortrait from '../../../../images/brand-portrait.png'
+import brandMark from '../../../../images/brand-mark.png'
 
 export const features = [
   { icon: FileText, name: 'A clearer view of every line', text: 'A virtualized table with whole-table scrolling, optional wrapping, independent tabs, and severity colors.', status: 'Available', className: 'available' },
@@ -13,6 +15,7 @@ export function Home({ busy, onOpen, onDemo, onDrop }: {
   return (
     <main className="home">
       <section className="hero">
+        <img className="page-brand-logo" src={brandMark} alt="LogDeck" width={160} height={160} />
         <div className="eyebrow"><span className="status-dot" /> YOUR LOGS. YOUR MACHINE.</div>
         <h1>Less noise.<br /><span>More understanding.</span></h1>
         <p className="hero-copy">A focused workspace for your logs. Open a file, follow the story,<br className="wide-break" /> and get back to building.</p>
@@ -45,7 +48,7 @@ export function Home({ busy, onOpen, onDemo, onDrop }: {
           </article>
         ))}</div>
       </section>
-      <footer className="home-footer"><span>LogDeck <span className="muted"> / A local-first developer workspace</span></span><span className="muted">Optional company tags in Settings / Live ADB: later release</span></footer>
+      <footer className="home-footer"><span className="footer-brand"><img src={brandPortrait} alt="" />LogDeck <span className="muted"> / A local-first developer workspace</span></span><span className="muted">Optional company tags in Settings / Live ADB: later release</span></footer>
     </main>
   )
 }

@@ -8,7 +8,8 @@ import { TextFiles } from './textFiles'
 import { CompanyTags } from './companyTags'
 import { changeWindowsIntegration, windowsIntegrationInfo } from './windowsIntegration'
 import { firebaseConfig } from '../../shared/firebaseTags'
-import { checkRelease, releaseConfiguration, startupReleaseCheck } from '../../shared/releases'
+import { releaseConfiguration } from '../../shared/releases'
+import { checkGitHubVersion, startupGitHubVersionCheck, type GitHubVersionConfiguration } from '../../shared/githubVersion'
 import type { FindMatch, LogRow, Result, SessionInfo, SearchInfo, ExportInfo, CacheInfo } from '../../shared/contracts'
 
 const windows = new Map<number, BrowserWindow>()
@@ -22,9 +23,11 @@ let files: FileWorker
 let companyTags: CompanyTags
 declare const __LOGDECK_FIREBASE__: { apiKey: string; projectId: string }
 declare const __LOGDECK_RELEASE__: { manifestUrl: string; websiteUrl: string }
+declare const __LOGDECK_VERSION__: GitHubVersionConfiguration
 
 if (process.env.LOGDECK_TEST_USER_DATA) app.setPath('userData', process.env.LOGDECK_TEST_USER_DATA)
 app.setName('LogDeck')
+if (process.platform === 'win32') app.setAppUserModelId('com.logdeck.desktop')
 
 function ownedWindow(event: IpcMainInvokeEvent) {
   const window = windows.get(event.sender.id)
@@ -128,6 +131,7 @@ async function createWindow(initialPath?: string) {
   const window = new BrowserWindow({
     width: 1440, height: 940, minWidth: 940, minHeight: 640,
     title: 'LogDeck', backgroundColor: '#101319', show: false,
+    icon: app.isPackaged ? join(process.resourcesPath, 'app-icon.ico') : join(app.getAppPath(), 'images', 'app-icon.ico'),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: true, contextIsolation: true, nodeIntegration: false
@@ -190,13 +194,10 @@ function registerIpc() {
     return result.response === 1 ? changeWindowsIntegration(action) : info
   })
   const release = releaseConfiguration(__LOGDECK_RELEASE__.manifestUrl, __LOGDECK_RELEASE__.websiteUrl)
-  const startupCheck = startupReleaseCheck(release, app.getVersion())
+  const startupCheck = startupGitHubVersionCheck(__LOGDECK_VERSION__, app.getVersion())
   ipc('updates:startup', async () => startupCheck())
-  ipc('updates:info', async () => ({ configured: release !== null, currentVersion: app.getVersion() }))
-  ipc('updates:check', async () => {
-    if (!release) throw new Error('Release checks are not configured. Ask the LogDeck administrator to configure the official website URLs.')
-    return checkRelease(release, app.getVersion())
-  })
+  ipc('updates:info', async () => ({ configured: true, downloadConfigured: release !== null, currentVersion: app.getVersion() }))
+  ipc('updates:check', async () => checkGitHubVersion(__LOGDECK_VERSION__, app.getVersion()))
   ipc('updates:open-download', async () => {
     if (!release) throw new Error('The official LogDeck website is not configured.')
     await shell.openExternal(new URL('/download', release.websiteUrl).href)

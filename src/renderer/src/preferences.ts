@@ -13,7 +13,7 @@ export function validSeverityStyle(value: unknown): value is SeverityStyle { ret
 export function validColumns(value: unknown): value is Column[] {
   return Array.isArray(value) && value.length === 7 && new Set(value.map(item => item?.id)).size === 7 &&
     value.every(item => item && columnIds.includes(item.id) && Number.isInteger(item.width) && item.width >= 40 && item.width <= 4000 && typeof item.visible === 'boolean') &&
-    value.some(item => item.id === 'message' && item.visible)
+    value.some(item => item.visible)
 }
 export function validPresets(value: unknown): value is Preset[] {
   return Array.isArray(value) && value.length <= 50 && new Set(value.map(item => item?.id)).size === value.length &&

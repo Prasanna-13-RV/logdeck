@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { asciiToHex, hexToAscii, normalizeHex } from '../../src/renderer/src/tools/conversion'
-import { definitions, definitionFor, validateTagValue, setBit, parseTlv, describeCvm, decodingNotice } from '../../src/renderer/src/tools/emv'
+import { definitions, definitionFor, defaultTagValue, validateTagValue, setBit, parseTlv, describeCvm, decodingNotice } from '../../src/renderer/src/tools/emv'
 
 describe('local conversion and EMV', () => {
   it('round-trips strict ASCII including control bytes', () => {
@@ -19,6 +19,12 @@ describe('local conversion and EMV', () => {
     for (const definition of definitions.filter(item => item.length)) {
       expect(() => validateTagValue(definition.tag, '00'.repeat(definition.length! + 1))).toThrow()
     }
+  })
+  it('creates a length-correct default when selecting an EMV tag', () => {
+    expect(defaultTagValue('95')).toBe('8000000000')
+    expect(defaultTagValue('9F34')).toBe('000000')
+    expect(defaultTagValue('9F66')).toBe('00000000')
+    expect(defaultTagValue('9F6E')).toBe('00')
   })
   it('round-trips every editable byte/bit position', () => {
     for (const definition of definitions.filter(item => item.length)) {

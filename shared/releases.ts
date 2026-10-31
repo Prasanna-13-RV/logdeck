@@ -15,9 +15,11 @@ export interface ReleaseConfiguration {
 export interface UpdatePageInfo {
   configured: boolean
   currentVersion: string
+  downloadConfigured?: boolean
 }
 
-export interface UpdateCheckResult extends UpdatePageInfo, ReleaseManifest {
+export interface UpdateCheckResult extends UpdatePageInfo, Omit<ReleaseManifest, 'publishedAt'> {
+  publishedAt?: string
   updateAvailable: boolean
   checkedAt: string
 }
@@ -37,8 +39,12 @@ const versionPattern = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z
 
 function versionParts(version: string) {
   const match = versionPattern.exec(version)
-  if (!match) throw new Error('Release version must follow semantic versioning (for example, 1.2.3).')
-  return { numbers: match.slice(1, 4).map(Number), prerelease: match[4]?.split('.') ?? null }
+  if (!match || match[0] !== version) throw new Error('Release version must follow semantic versioning (for example, 1.2.3).')
+  const prerelease = match[4]?.split('.') ?? null
+  if (prerelease?.some(part => /^\d+$/.test(part) && part.length > 1 && part.startsWith('0'))) {
+    throw new Error('Release version must follow semantic versioning (numeric prerelease identifiers cannot have leading zeros).')
+  }
+  return { numbers: match.slice(1, 4).map(part => BigInt(part)), prerelease }
 }
 
 export function isNewerVersion(candidate: string, current: string): boolean {
@@ -115,8 +121,12 @@ export function releaseConfiguration(manifestUrl: unknown, websiteUrl: unknown):
 }
 
 export async function fetchReleaseManifest(url: string, request: typeof fetch = globalThis.fetch.bind(globalThis)): Promise<ReleaseManifest> {
+  return parseReleaseManifest(await fetchReleaseText(url, request))
+}
+
+export async function fetchReleaseText(url: string, request: typeof fetch = globalThis.fetch.bind(globalThis)): Promise<string> {
   const target = secureHttpsUrl(url, 'Release manifest URL')
-  const response = await request(target.href, { signal: AbortSignal.timeout(10_000), redirect: 'error' })
+  const response = await request(target.href, { signal: AbortSignal.timeout(10_000), redirect: 'error', cache: 'no-store' })
   if (!response.ok) throw new Error(`Release check failed (${response.status}). Try again later.`)
   const declaredLength = Number(response.headers.get('content-length'))
   if (Number.isFinite(declaredLength) && declaredLength > 32_768) throw new Error('Release manifest exceeds 32 KB.')
@@ -135,5 +145,5 @@ export async function fetchReleaseManifest(url: string, request: typeof fetch = 
     }
     output += decoder.decode()
   } finally { reader.releaseLock() }
-  return parseReleaseManifest(output)
+  return output
 }

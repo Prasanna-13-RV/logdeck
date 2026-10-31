@@ -1,4 +1,4 @@
-.website { min-height: 100vh; display: flex; flex-direction: column; background: radial-gradient(ellipse at 50% 12%, var(--hero-glow), transparent 53%), var(--bg); }
+.website { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column; background: radial-gradient(ellipse at 50% 12%, var(--hero-glow), transparent 53%), var(--bg); }
 .website a { color: var(--accent); text-decoration: none; }
 .website a:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
 .website .navbar { position: sticky; top: 0; }
@@ -41,6 +41,7 @@
 .admin-preview { max-height: 360px; overflow: auto; margin: 20px 0; }
 .admin-preview table { width: 100%; border-collapse: collapse; text-align: left; }
 .admin-preview th, .admin-preview td { padding: 10px; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
+.website .tool-card, .website .hero-copy, .download-page > p { overflow-wrap: anywhere; }
 .skip-link { position: fixed; top: -100px; left: 10px; z-index: 100; padding: 12px; background: var(--surface); }
 .skip-link:focus { top: 10px; }
 @media (max-width: 700px) {
@@ -55,4 +56,27 @@
   .preview-row { grid-template-columns: 35px 65px minmax(0, 1fr); gap: 7px; padding: 10px; font-size: 10px; }
   .site-preview header { flex-wrap: wrap; }
   .website .hero h1 { letter-spacing: -1.6px; }
+  .wide-break { display: none; }
+  .download-card { padding: 24px; }
+}
+@media (max-width: 480px) {
+  .website .navbar { padding: 10px 14px; gap: 8px; }
+  .website .navbar nav { gap: 20px; }
+  .website .hero { padding: 28px 16px; }
+  .website .hero h1 { font-size: clamp(32px, 8.5vw, 44px); letter-spacing: -1.2px; }
+  .site-actions { flex-direction: column; align-items: stretch; gap: 10px; }
+  .site-actions > a { min-height: 44px; }
+  .website .trust-row { flex-wrap: wrap; gap: 12px; }
+  .website .features-section { padding-inline: 16px; }
+  .site-section { margin: 12px; padding: 18px; }
+  .download-card { padding: 20px 16px; margin-block: 24px; }
+  .download-card > .primary-button { width: 100%; margin-right: 0; }
+  .site-footer { width: calc(100% - 32px); margin: 16px; }
+  .site-footer > div { gap: 12px; }
+  .admin-form button { max-width: 100%; white-space: normal; }
+  .admin-preview table { min-width: 480px; }
+}
+@media (pointer: coarse) {
+  .website .icon-button, .website button, .website .navbar nav a { min-height: 44px; }
+  .website .icon-button { min-width: 44px; }
 }

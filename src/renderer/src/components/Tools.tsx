@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { asciiToHex, hexToAscii, normalizeHex, escapedBytePreview, type ByteEncoding } from '../tools/conversion'
-import { definitions, definitionFor, validateTagValue, setBit, replaceByte, decodingNotice, cvmMethods, cvmConditions, cvmResults, describeCvm, parseTlv, type Scheme, type TlvNode } from '../tools/emv'
+import { definitions, definitionFor, defaultTagValue, validateTagValue, limitHex, setBit, replaceByte, decodingNotice, cvmMethods, cvmConditions, cvmResults, describeCvm, parseTlv, type Scheme, type TlvNode } from '../tools/emv'
 import type { EmvSeed } from '../../../../shared/emvTracker'
 
 function message(error: unknown) { return error instanceof Error ? error.message : String(error) }
@@ -42,7 +42,7 @@ function TlvRows({ nodes, depth = 0, select }: { nodes: TlvNode[]; depth?: numbe
 export function EmvTool({ seed }: { seed?: EmvSeed }) {
   const [scheme, setScheme] = useState<Scheme>('visa')
   const [tag, setTag] = useState(seed?.tag ?? '95')
-  const [input, setInput] = useState(seed?.value ?? '8000000000')
+  const [input, setInput] = useState(seed?.value ?? defaultTagValue('95'))
   const [loadedTag, setLoadedTag] = useState('95')
   const [original, setOriginal] = useState('8000000000')
   const [modified, setModified] = useState('8000000000')
@@ -85,8 +85,11 @@ export function EmvTool({ seed }: { seed?: EmvSeed }) {
     <div className="tool-card">
       <form className="tool-input-row" onSubmit={event => { event.preventDefault(); loadTag(tag, input) }}>
         <label>Scheme / profile<select aria-label="EMV scheme" value={scheme} onChange={event => setScheme(event.target.value as Scheme)}><option value="visa">Visa (qVSDC qualifiers)</option><option value="mastercard">Mastercard (common EMV fields)</option></select></label>
-        <label>Tag<select aria-label="EMV tag" value={tag} onChange={event => setTag(event.target.value)}>{definitions.map(item => <option key={item.tag} value={item.tag}>{item.tag} · {item.name}</option>)}</select></label>
-        <label className="grow">Value to decode<input aria-label="EMV value" value={input} maxLength={1000} onChange={event => setInput(event.target.value)} spellCheck={false} /></label>
+        <label>Tag<select aria-label="EMV tag" value={tag} onChange={event => {
+          const nextTag = event.target.value
+          setTag(nextTag); setInput(defaultTagValue(nextTag)); setError('')
+        }}>{definitions.map(item => <option key={item.tag} value={item.tag}>{item.tag} · {item.name}</option>)}</select></label>
+        <label className="grow">Value to decode<input aria-label="EMV value" value={input} maxLength={1000} onChange={event => setInput(limitHex(event.target.value, definitionFor(tag).length))} spellCheck={false} /></label>
         <button className="primary-button">Decode value</button>
       </form>
       <p className="muted">The initial TVR value is a synthetic example. Paste your value and Decode to establish a new immutable baseline. Scheme selection never auto-detects a kernel or invents missing definitions.</p>
@@ -99,14 +102,14 @@ export function EmvTool({ seed }: { seed?: EmvSeed }) {
       <section className={`tool-card ${modified !== original ? 'changed-card' : ''}`}><h3>Modified value {modified !== original && <span className="change-label">CHANGED</span>}</h3><output className="hex-output" aria-label="Modified tag value">{modified}</output><CopyValue value={modified} label="Copy modified value" /><button className="text-button" onClick={() => change(original)}>Reset changes</button></section>
     </div>
     <form className="tool-input-row tool-card" onSubmit={event => { event.preventDefault(); change(hexDraft) }}>
-      <label className="grow">Edit raw hex (preserves byte length)<input aria-label="Modified hex input" value={hexDraft} maxLength={1000} onChange={event => setHexDraft(event.target.value)} /></label>
+      <label className="grow">Edit raw hex (preserves byte length)<input aria-label="Modified hex input" value={hexDraft} maxLength={1000} onChange={event => setHexDraft(limitHex(event.target.value, original.length / 2))} /></label>
       <button className="secondary-button">Apply hex edit</button>
       <span className="muted">RFU and unverified fields have no semantic bit toggles. Raw edits are not compliance validation.</span>
     </form>
     {cvmOriginal && cvmModified && <section className="tool-card"><h3>CVM Results: coded fields, not independent flags</h3>
       <table className="data-table"><thead><tr><th>Field</th><th>Original</th><th>Modified</th></tr></thead><tbody>
         {([
-          ['CVM method', 0, cvmMethods, cvmOriginal.method],
+          ['CVM method (6-bit value)', 0, cvmMethods, cvmOriginal.method],
           ['Condition code', 1, cvmConditions, cvmOriginal.condition],
           ['Result', 2, cvmResults, cvmOriginal.result]
         ] as const).map(([name, byte, values, description]) => {
@@ -128,7 +131,7 @@ export function EmvTool({ seed }: { seed?: EmvSeed }) {
           const before = bit(original, byte, position)
           const after = bit(modified, byte, position)
           const editable = !meaning.startsWith('RFU') && !meaning.includes('raw only')
-          return <tr className={before !== after ? 'changed-row' : ''} key={index}>
+          return <tr className={`${after ? 'bit-set' : ''} ${before !== after ? 'changed-row' : ''}`.trim()} key={index}>
             {[8, 7, 6, 5, 4, 3, 2, 1].map(column => <td key={column}>{column === position ? <button className="bit-toggle" aria-label={`Byte ${byte + 1} bit ${position}: ${meaning}`} aria-pressed={Boolean(after)} disabled={!editable} onClick={() => change(setBit(modified, byte, position, !after))}>{after}</button> : ''}</td>)}
             <td>{meaning}</td><td>{before}</td><td>{after}{before !== after ? ' (changed)' : ''}</td>
           </tr>

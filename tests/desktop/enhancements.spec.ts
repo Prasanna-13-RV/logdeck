@@ -109,6 +109,23 @@ test('whole-table scroll, synchronized slider, measured wrap, tabs and disk-back
   }
 })
 
+test('one logs-only control hides navigation and can be restored', async () => {
+  const { directory, desktop, page } = await launch()
+  try {
+    const logsOnly = page.getByRole('button', { name: 'Logs only / hide navigation (F11)', exact: true })
+    await expect(logsOnly).toHaveCount(1)
+    await logsOnly.click()
+    await expect(page.locator('.navbar')).toBeHidden()
+    await expect(page.getByRole('tablist')).toBeHidden()
+    await page.getByRole('button', { name: 'Show navigation and tabs', exact: true }).click()
+    await expect(page.locator('.navbar')).toBeVisible()
+    await expect(page.getByRole('tablist')).toBeVisible()
+  } finally {
+    await desktop.close()
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
 test('local ASCII conversion, EMV bit editing, CVM, scheme gating and nested TLV updates', async () => {
   const { directory, desktop, page } = await launch()
   try {
@@ -123,17 +140,26 @@ test('local ASCII conversion, EMV bit editing, CVM, scheme gating and nested TLV
     await page.getByRole('button', { name: '← Hex to ASCII' }).click()
     await expect(page.getByRole('alert')).toContainText('not ASCII')
     await page.getByRole('button', { name: 'EMV', exact: true }).click()
+    await expect(page.locator('.bit-table tbody tr').first()).toHaveClass(/bit-set/)
     await page.getByRole('button', { name: 'Byte 1 bit 8: Offline data authentication was not performed', exact: true }).click()
     await expect(page.getByLabel('Original tag value', { exact: true })).toHaveText('8000000000')
     await expect(page.getByLabel('Modified tag value', { exact: true })).toHaveText('0000000000')
+    await expect(page.locator('.bit-table tbody tr').first()).toHaveClass(/changed-row/)
     await page.getByRole('button', { name: 'Reset changes', exact: true }).click()
     await expect(page.getByLabel('Modified tag value', { exact: true })).toHaveText('8000000000')
+    await expect(page.locator('.bit-table tbody tr').first()).toHaveClass(/bit-set/)
     await page.getByLabel('EMV tag', { exact: true }).selectOption('9F34')
+    await expect(page.getByLabel('EMV value', { exact: true })).toHaveValue('000000')
     await page.getByLabel('EMV value', { exact: true }).fill('1F0002')
     await page.getByRole('button', { name: 'Decode value', exact: true }).click()
     await page.getByLabel('Result', { exact: true }).selectOption('1')
     await expect(page.getByLabel('Modified tag value', { exact: true })).toHaveText('1F0001')
+    await page.getByLabel('EMV value', { exact: true }).fill('DF0002')
+    await page.getByRole('button', { name: 'Decode value', exact: true }).click()
+    await page.getByLabel('CVM method (6-bit value)', { exact: true }).selectOption('1')
+    await expect(page.getByLabel('Modified tag value', { exact: true })).toHaveText('C10002')
     await page.getByLabel('EMV tag', { exact: true }).selectOption('9F66')
+    await expect(page.getByLabel('EMV value', { exact: true })).toHaveValue('00000000')
     await page.getByLabel('EMV value', { exact: true }).fill('20000000')
     await page.getByRole('button', { name: 'Decode value', exact: true }).click()
     await page.getByLabel('EMV scheme').selectOption('mastercard')

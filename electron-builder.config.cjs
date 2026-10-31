@@ -12,10 +12,12 @@ module.exports = {
     '!node_modules/better-sqlite3/prebuilds/{darwin-*,linux*,win32-arm64.node}'
   ],
   asar: true,
+  extraResources: [{ from: 'images/app-icon.ico', to: 'app-icon.ico' }],
   asarUnpack: ['node_modules/better-sqlite3/**/*'],
   // better-sqlite3 13 ships a Node-API prebuild; rebuilding it requires an unnecessary local C++ toolchain.
   npmRebuild: false,
   win: {
+    icon: 'images/app-icon.ico',
     target: [{ target: 'portable', arch: ['x64'] }],
     artifactName: 'LogDeck-${version}-windows-x64.exe',
     executableName: 'LogDeck',

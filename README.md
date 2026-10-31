@@ -63,7 +63,7 @@ Electron and requires network access; normal local file viewing does not.
 - Optional Firebase email/password company sign-in, validated immutable company tag packs,
   manual Settings downloads, offline caching and separate global/company definitions.
   Cloud features remain disabled until you configure your Firebase project.
-- Desktop checks the configured official website's version/notes manifest once per app launch
+- Desktop checks the configured public GitHub `version.json` once per app launch
   and shows a nonblocking newer-version notice. The Updates page also supports manual checks. Downloads open
   manually; the app never downloads or installs updates automatically.
 
@@ -96,17 +96,65 @@ published by this implementation. On Netlify the Download page reads the latest
 published stable GitHub release and its actual EXE SHA-256 digest. It stays
 unavailable if GitHub has no complete release or cannot be reached.
 
-The desktop checks the public release manifest once at startup without blocking log viewing.
-A newer version shows a notice with **View update** and **Download page**;
-failed checks show an explicit notice with **Retry in Updates**. The **Updates** tab
-also lets the user click **Check for updates**. Configure `VITE_WEBSITE_URL` and
-`VITE_UPDATE_MANIFEST_URL` in the desktop build environment; the manifest must be
-the same-origin HTTPS `/updates/windows.json`. Update its semantic version,
-publication date, and release notes when you publish a release. The app then
-compares that website version with its installed Electron app version. Review
-notes and use **Official download page** to update manually. No auto-download,
-installer replacement or periodic background polling is performed. Startup checks
-send no logs, credentials or company-tag content; unconfigured builds make no request.
+The desktop checks a public GitHub version file once at startup without blocking
+log viewing. Root `version-check.config.json` selects owner/repository/branch;
+root `version.json` contains `version` and optional `releaseNotes`. The initial
+URL is `https://raw.githubusercontent.com/Prasanna-13-RV/logdeck/main/version.json`.
+A successful newer version shows a dismissible notification with installed
+version, latest version and notes. Equal/older versions and failed checks show
+no notification. Errors are logged and available in **Updates**, which also
+supports explicit manual retries. No auto-download, EXE replacement or periodic
+polling is performed; no logs, credentials or company-tag content are sent.
+
+See [GitHub version checking](docs/GitHub-version-checking.md) for configuration,
+publishing steps, commands and packaged Windows verification. Existing
+`VITE_WEBSITE_URL`/`VITE_UPDATE_MANIFEST_URL` settings retain their website/download
+role, but do not control desktop version checking. Website functionality is unchanged.
+
+### Branding and Windows file icons
+
+The desktop and website use the supplied transparent logo in navigation and the
+Home page hero, with the same prominent logo on the website Download page and
+desktop Updates page. They use the portrait variant in their footers.
+The supplied favicons are bundled with each
+build. Original black/white/SVG artwork remains in `images/` for future use;
+logos keep their original proportions rather than being stretched.
+
+Responsive layouts adapt the website from 320px phones through tablets and
+desktop screens, including Home/Download logos, navigation, cards and the admin
+form. The desktop navbar wraps at compact window sizes instead of clipping
+actions, and shorter windows use a smaller Home logo and tighter spacing.
+The native app retains its existing 940 x 640 minimum window size. Log tables
+and editors keep their intentional internal scrolling; selected split
+orientation is not changed automatically.
+
+The Windows EXE embeds a multi-resolution LogDeck icon (16 through 256 pixels).
+The native window icon, Windows application identity, and executable product
+name/description also use LogDeck. The window title still includes the active
+filename. Windows may show separate Electron helper processes in Task Manager.
+
+After replacing the transparent source artwork, regenerate the optimized PNGs
+and Windows icon before building:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\prepare-branding.ps1
+npm.cmd run build
+```
+
+To enable **Open with LogDeck**, keep the portable EXE in a permanent location,
+open **Settings > Windows integration**, and enable the registration. It registers
+`.log` and `.logcat` for the current user, using the branded EXE icon and quoted
+file paths. Registration does not replace your current default application.
+For `.logcat` files to display the LogDeck logo in Explorer, choose LogDeck in
+Windows **Open with > Choose another app** and set it as the default for that
+extension. Re-enable registration after moving or upgrading the portable EXE so
+Windows uses the new path. Registration refreshes the shell's association cache;
+Explorer may also need a refresh before the icon changes.
+
+The release smoke test checks the embedded EXE icon/product identity, native
+window title, and opening a `.logcat` file using the registered command for both
+the unpacked app and portable launcher. Registry checks use an isolated test
+subtree and remove it afterwards; they do not change your real file defaults.
 
 ### Portable Windows releases
 
@@ -446,8 +494,9 @@ but requires your Firebase project configuration and deployed rules.
 
 There is no setup wizard or automatic download/installation. Optional per-user
 Windows Open With registration is available in Settings; signing requires your
-publisher certificate. Startup notices and manual checks link to the official
-Download page, where users obtain and replace the portable EXE themselves.
+publisher certificate. Startup notices are notification-only; the existing Updates
+page links to the official Download page when configured. Users obtain and replace
+the portable EXE themselves.
 
 See [the release requirements](docs/spec.md) and
 [the technical specification](docs/LogDeck-technical-documentation.md).

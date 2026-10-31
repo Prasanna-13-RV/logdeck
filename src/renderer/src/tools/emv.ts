@@ -40,6 +40,17 @@ export function definitionFor(tag: string): TagDefinition {
   return definition
 }
 
+export function defaultTagValue(tag: string): string {
+  const definition = definitionFor(tag)
+  if (definition.tag === '95') return '8000000000'
+  return '00'.repeat(definition.length ?? 1)
+}
+
+export function limitHex(value: string, bytes?: number): string {
+  const hex = value.replace(/[^0-9a-f]/gi, '').toUpperCase()
+  return bytes ? hex.slice(0, bytes * 2) : hex
+}
+
 export function validateTagValue(tag: string, value: string): string {
   const hex = normalizeHex(value, 256)
   const definition = definitionFor(tag)

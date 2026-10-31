@@ -127,9 +127,10 @@ file indexes, always-on polling, unnecessary dependencies, and full-log objects.
 
 The Vite/React marketing website and private company-tag publishing UI are separate
 from Electron. Firebase Auth/Firestore are optional external identity/definition services.
-The desktop reads a small same-origin HTTPS version/notes manifest once per app
+The desktop reads a small public raw GitHub `version.json` once per app
 launch, asynchronously, and on manual checks from Updates. A nonblocking startup
-notice shows a newer version or a check error. The download page opens manually;
+notice shows only a successfully validated newer version; check errors are logged
+and available in Updates, not shown as startup notices. The download page opens manually;
 there is no automatic download or installation. The AI gateway is still
 deferred. Folder sync, binary comparison,
 full IDE functionality, and full Beyond Compare feature parity are not promised.
@@ -166,6 +167,8 @@ apps. Users must register again after moving or replacing the versioned EXE.
 GitHub Releases hosts binaries/checksums; Netlify hosts the website and a bounded
 same-origin metadata proxy for the latest complete public stable release. Updates
 include one asynchronous startup check, retryable manual checks and manual EXE replacement.
+Desktop checks use the independent root GitHub `version.json`, not the website
+proxy. See [GitHub version notifications](GitHub-version-checking.md).
 `npm run release` prepares locally, defaults to a patch bump, and never commits or
 pushes. The pushed matching tag triggers CI publication.
 See [distribution setup](Firebase-and-website-setup.md).

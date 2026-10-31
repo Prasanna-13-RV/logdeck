@@ -36,7 +36,7 @@ export function LocalSettings({ onError }: { onError: (message: string) => void 
     <h3>Log columns</h3>
     <div className="column-editor" aria-label="Column layout">
       {columns.map((column, index) => <div className="column-control" key={column.id}>
-        <label><input type="checkbox" aria-label={`Show ${column.id} column`} disabled={column.id === 'message'} checked={column.visible} onChange={event => saveColumns(columns.map(value => value.id === column.id ? { ...value, visible: event.target.checked } : value))} />{column.id}</label>
+        <label><input type="checkbox" aria-label={`Show ${column.id === 'line' ? 'record' : column.id} column`} disabled={column.visible && columns.filter(value => value.visible).length === 1} checked={column.visible} onChange={event => saveColumns(columns.map(value => value.id === column.id ? { ...value, visible: event.target.checked } : value))} />{column.id === 'line' ? 'record' : column.id}</label>
         <input aria-label={`${column.id} column width`} type="number" min={40} max={4000} value={column.width} onChange={event => {
           const width = Number(event.target.value)
           if (Number.isInteger(width) && width >= 40 && width <= 4000) saveColumns(columns.map(value => value.id === column.id ? { ...value, width } : value))

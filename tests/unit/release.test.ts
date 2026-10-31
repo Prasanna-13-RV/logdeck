@@ -47,6 +47,7 @@ describe('offline release boundaries', () => {
   it('validates complete column layouts and bounded presets/settings', () => {
     expect(validColumns(defaultColumns)).toBe(true)
     expect(validColumns(defaultColumns.map(item => ({ ...item, visible: false })))).toBe(false)
+    expect(validColumns(defaultColumns.map(item => ({ ...item, visible: item.id !== 'message' })))).toBe(true)
     expect(validColumns([...defaultColumns.slice(1), defaultColumns[1]])).toBe(false)
     expect(validDisplay({ fontSize: 13, defaultWrap: true })).toBe(true)
     expect(validDisplay({ fontSize: 50, defaultWrap: false })).toBe(false)

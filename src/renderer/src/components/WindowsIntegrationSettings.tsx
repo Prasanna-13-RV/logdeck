@@ -17,6 +17,7 @@ export function WindowsIntegrationSettings({ onError }: { onError: (message: str
   return <section aria-label="Windows Open with">
     <h3>Open with LogDeck</h3>
     <p className="muted">Download the portable EXE to a permanent folder and run it. No installer or administrator rights are needed. Enable this optional integration to add LogDeck to Windows Open with for .log and .logcat files; your default apps are unchanged.</p>
+    <p className="muted">The LogDeck logo is used for its Open with entry and associated files. To show it on .logcat files in Explorer, choose LogDeck as the default app. Enable again after upgrading to refresh the icon and executable path.</p>
     <p role="status">{!info ? 'Reading Windows integration...' : !info.available ? 'Available in the packaged Windows app.' : info.registeredPath ? `Registered EXE: ${info.registeredPath}` : 'Not registered for this Windows account.'}</p>
     {info?.available && <p className="muted">Current EXE: {info.executablePath}. If you move or download a new version, enable again from that EXE. To make LogDeck the default, select it in Windows Settings &gt; Apps &gt; Default apps.</p>}
     <button className="secondary-button" disabled={busy || !info?.available} onClick={() => void update('register')}>Enable Open with LogDeck</button>

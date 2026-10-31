@@ -7,9 +7,12 @@ import { spawn, execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import assert from 'node:assert/strict'
 import { releaseLinks } from './releaseHelpers.ts'
+import { windowsIntegrationScript } from '../shared/windowsIntegration.ts'
+import { randomUUID } from 'node:crypto'
 
 const directory = resolve(process.argv[2])
 const version = process.argv[3]
+const checkVersionFile = process.argv.slice(4).includes('--check-version-file')
 const { filename } = releaseLinks('Prasanna-13-RV/logdeck', version)
 assert((await stat(join(directory, filename))).size > 1_000_000, 'Portable EXE must exist.')
 const userData = await mkdtemp(join(tmpdir(), 'logdeck-packaged-'))
@@ -25,7 +28,19 @@ async function verify(page: Page, executablePath: string) {
   await page.waitForFunction(() => Boolean(window.logdeck))
   const result = await page.evaluate(() => window.logdeck.updatePageInfo())
   assert(result.ok && result.value.currentVersion === version, 'Packaged version must match the release.')
-  assert(result.value.configured, 'Release builds must embed the production update endpoint.')
+  assert(result.value.configured, 'Release builds must embed the GitHub version checker.')
+  assert((await page.title()).includes('LogDeck'), 'The native window title must identify LogDeck.')
+  const { stdout } = await promisify(execFile)('powershell.exe', [
+    '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', resolve('scripts/verify-windows-branding.ps1'),
+    '-Executable', executablePath, '-Icon', resolve('images/app-icon.ico')
+  ], { timeout: 20_000 })
+  console.log(stdout.trim())
+  if (checkVersionFile) {
+    const checked = await page.evaluate(() => window.logdeck.startupUpdateCheck())
+    assert(checked.ok, `Packaged GitHub request failed: ${checked.ok ? '' : checked.error}`)
+    assert(checked.value && checked.value.currentVersion === version, 'GitHub check must use the packaged app version.')
+    console.log(`Packaged GitHub check PASS: installed ${checked.value.currentVersion}, remote ${checked.value.latestVersion}`)
+  }
   await page.waitForFunction(async () => {
     const sources = await window.logdeck.getSessions()
     return sources.ok && sources.value.some(file => file.name === 'threadtime.log' && file.status === 'ready' && file.lines > 0)
@@ -40,6 +55,33 @@ async function verify(page: Page, executablePath: string) {
   assert(integration.ok && integration.value.available, 'Packaged Windows integration must be available.')
   assert.equal(integration.value.executablePath.toLowerCase(), executablePath.toLowerCase(), 'Registration must use the outer portable EXE, never its extracted runtime.')
   return integration
+}
+
+async function associationExecutable(executable: string) {
+  const root = `HKCU:\\Software\\LogDeck.PackageTests\\${randomUUID()}`
+  const isolated = (action: 'register' | 'remove') => windowsIntegrationScript(action, executable)
+    .replaceAll('HKCU:\\Software\\Classes', `${root}\\Classes`)
+    .replaceAll('HKCU:\\Software\\LogDeck\\Capabilities', `${root}\\Capabilities`)
+    .replaceAll('HKCU:\\Software\\RegisteredApplications', `${root}\\RegisteredApplications`)
+  const script = `
+try {
+  ${isolated('register')}
+  $command = (Get-Item -LiteralPath "$prog\\shell\\open\\command").GetValue('')
+  $icon = (Get-Item -LiteralPath "$prog\\DefaultIcon").GetValue('')
+  if ($icon -ne ('"' + $exe + '",0')) { throw 'The registered file icon must use the branded EXE.' }
+  if (-not ((Get-Item -LiteralPath "$classes\\.logcat\\OpenWithProgids").GetValueNames() -contains 'LogDeck.LogFile')) { throw 'Missing .logcat association.' }
+  ${isolated('remove')}
+  $command | ConvertTo-Json -Compress
+} finally { if (Test-Path -LiteralPath '${root}') { Remove-Item -LiteralPath '${root}' -Recurse -Force } }
+`
+  const { stdout } = await promisify(execFile)('powershell.exe',
+    ['-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')],
+    { timeout: 20_000 })
+  const command: unknown = JSON.parse(stdout)
+  assert(typeof command === 'string', 'Registration must return an open command.')
+  const match = /^"(.+)" "%1"$/.exec(command)
+  assert(match && match[1] === executable, 'Open with must target the actual EXE with a quoted file argument.')
+  return match[1]
 }
 
 async function waitForDebugPort(profile: string, child: ReturnType<typeof spawn>) {
@@ -73,7 +115,11 @@ for ($i = 0; $i -lt $ids.Count; $i++) {
   foreach ($item in $all) { if ($item.ParentProcessId -eq $ids[$i] -and -not $ids.Contains([int]$item.ProcessId)) { $ids.Add([int]$item.ProcessId) } }
 }
 for ($i = $ids.Count - 1; $i -ge 0; $i--) {
-  if (Get-Process -Id $ids[$i] -ErrorAction SilentlyContinue) { Stop-Process -Id $ids[$i] -Force }
+  $process = Get-Process -Id $ids[$i] -ErrorAction SilentlyContinue
+  if ($process) {
+    Stop-Process -Id $ids[$i] -Force
+    if (-not $process.WaitForExit(10000)) { throw "Test process $($ids[$i]) did not stop." }
+  }
 }`
   console.error(`Stopping test-owned launcher process tree ${child.pid} after cleanup timeout.`)
   await promisify(execFile)('powershell.exe', ['-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')])
@@ -106,7 +152,8 @@ try {
       const cancelled = await page.evaluate(() => window.logdeck.changeWindowsIntegration('register'))
       assert.deepEqual(cancelled, integration, 'Cancel must not register or alter Windows associations.')
       const newWindow = desktop.waitForEvent('window')
-      const second = spawn(extracted, [secondFixture], { env, stdio: 'ignore' })
+      const registeredExe = await associationExecutable(extracted)
+      const second = spawn(registeredExe, [secondFixture], { env, stdio: 'ignore' })
       second.on('error', error => console.error('Second-instance launch failed:', error))
       const forwarded = await newWindow
       await forwarded.waitForFunction(async () => {
@@ -132,11 +179,12 @@ try {
     try {
       const context = browser.contexts()[0]
       const page = context.pages()[0] ?? await context.waitForEvent('page')
-      await verify(page, portable)
       browserPids = await portableMainPids(profile)
+      await verify(page, portable)
       console.log(`Portable startup and indexed read: ${((Date.now() - started) / 1000).toFixed(1)}s`)
       const newPage = context.waitForEvent('page', { timeout: 120_000 })
-      secondPortable = spawn(portable, [secondFixture], { env, stdio: 'ignore' })
+      const registeredExe = await associationExecutable(portable)
+      secondPortable = spawn(registeredExe, [secondFixture], { env, stdio: 'ignore' })
       console.log(`Testing portable second-instance forwarding (launcher ${secondPortable.pid}).`)
       secondPortable.on('error', error => console.error('Portable second-instance launch failed:', error))
       const forwarded = await newPage
@@ -158,4 +206,4 @@ try {
     if (secondPortable) await cleanLauncher(secondPortable)
     await cleanLauncher(child)
   }
-} finally { await rm(userData, { recursive: true, force: true }) }
+} finally { await rm(userData, { recursive: true, force: true, maxRetries: 5, retryDelay: 500 }) }
