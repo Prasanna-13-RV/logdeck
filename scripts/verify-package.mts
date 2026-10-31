@@ -178,7 +178,7 @@ try {
     const browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`)
     try {
       const context = browser.contexts()[0]
-      const page = context.pages()[0] ?? await context.waitForEvent('page')
+      const page = context.pages()[0] ?? await context.waitForEvent('page', { timeout: 120_000 })
       browserPids = await portableMainPids(profile)
       await verify(page, portable)
       console.log(`Portable startup and indexed read: ${((Date.now() - started) / 1000).toFixed(1)}s`)
