@@ -182,7 +182,10 @@ try {
     const browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`)
     try {
       const context = browser.contexts()[0]
-      const page = context.pages()[0] ?? await context.waitForEvent('page', { timeout: 120_000 })
+      // Playwright can miss the page event for a window that already existed when CDP attached, so poll instead.
+      let page = context.pages()[0]
+      for (const end = Date.now() + 120_000; !page && Date.now() < end; page = browser.contexts().flatMap(item => item.pages())[0]) await delay(500)
+      if (!page) throw new Error('Portable EXE did not open a window within 120 seconds.')
       browserPids = await portableMainPids(profile)
       await verify(page, portable)
       console.log(`Portable startup and indexed read: ${((Date.now() - started) / 1000).toFixed(1)}s`)
