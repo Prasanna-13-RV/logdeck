@@ -117,8 +117,8 @@ for ($i = 0; $i -lt $ids.Count; $i++) {
 for ($i = $ids.Count - 1; $i -ge 0; $i--) {
   $process = Get-Process -Id $ids[$i] -ErrorAction SilentlyContinue
   if ($process) {
-    Stop-Process -Id $ids[$i] -Force
-    if (-not $process.WaitForExit(10000)) { throw "Test process $($ids[$i]) did not stop." }
+    Stop-Process -Id $ids[$i] -Force -ErrorAction SilentlyContinue
+    try { if (-not $process.WaitForExit(10000)) { throw "Test process $($ids[$i]) did not stop." } } catch [System.InvalidOperationException] { }
   }
 }`
   console.error(`Stopping test-owned launcher process tree ${child.pid} after cleanup timeout.`)
