@@ -155,6 +155,9 @@ The release smoke test checks the embedded EXE icon/product identity, native
 window title, and opening a `.logcat` file using the registered command for both
 the unpacked app and portable launcher. Registry checks use an isolated test
 subtree and remove it afterwards; they do not change your real file defaults.
+The portable smoke test waits for the loaded renderer in DevTools before attaching
+Playwright. The debugging port alone is not a window-readiness signal; attaching
+too early can leave Playwright with no pages even though the app opens normally.
 
 ### Portable Windows releases
 

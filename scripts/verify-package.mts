@@ -6,7 +6,7 @@ import { join, resolve } from 'node:path'
 import { spawn, execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import assert from 'node:assert/strict'
-import { releaseLinks } from './releaseHelpers.ts'
+import { releaseLinks, waitForPortablePage } from './releaseHelpers.ts'
 import { windowsIntegrationScript } from '../shared/windowsIntegration.ts'
 import { randomUUID } from 'node:crypto'
 
@@ -179,14 +179,14 @@ try {
     // The NSIS launcher does not relay Electron inspector stderr; attach to its actual browser.
     const started = Date.now()
     const port = await waitForDebugPort(profile, child)
-    const browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`)
+    browserPids = await portableMainPids(profile)
+    const endpoint = `http://127.0.0.1:${port}`
+    await waitForPortablePage(endpoint, child)
+    const browser = await chromium.connectOverCDP(endpoint)
     try {
       const context = browser.contexts()[0]
-      // Playwright can miss the page event for a window that already existed when CDP attached, so poll instead.
-      let page = context.pages()[0]
-      for (const end = Date.now() + 300_000; !page && Date.now() < end; page = browser.contexts().flatMap(item => item.pages())[0]) await delay(500)
-      if (!page) throw new Error('Portable EXE did not open a window within 300 seconds.')
-      browserPids = await portableMainPids(profile)
+      const page = context.pages()[0]
+      if (!page) throw new Error('Playwright could not attach to the loaded portable window.')
       await verify(page, portable)
       console.log(`Portable startup and indexed read: ${((Date.now() - started) / 1000).toFixed(1)}s`)
       const newPage = context.waitForEvent('page', { timeout: 120_000 })

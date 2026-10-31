@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { nextVersion, releaseLinks, releaseOptions } from '../../scripts/releaseHelpers'
+import { nextVersion, releaseLinks, releaseOptions, waitForPortablePage } from '../../scripts/releaseHelpers'
 import { windowsIntegrationScript } from '../../shared/windowsIntegration'
 import { githubReleaseManifest, latestGithubRelease } from '../../shared/githubRelease'
 import { parseReleaseManifest } from '../../shared/releases'
@@ -18,6 +18,45 @@ const published = {
 }
 
 describe('portable distribution preparation', () => {
+  it('waits for a navigated Electron renderer rather than just the browser port', async () => {
+    const request = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(Response.json([]))
+      .mockResolvedValueOnce(Response.json([{ type: 'page', url: 'about:blank' }, { type: 'worker', url: 'file:///out/renderer/index.html' }]))
+      .mockResolvedValueOnce(Response.json([{ type: 'page', url: 'file:///C:/Temp/app/resources/app.asar/out/renderer/index.html' }]))
+    vi.stubGlobal('fetch', request)
+    try {
+      await waitForPortablePage('http://127.0.0.1:12345', { exitCode: null, signalCode: null })
+      expect(request).toHaveBeenCalledTimes(3)
+      expect(request.mock.calls[0][0]).toBe('http://127.0.0.1:12345/json/list')
+      expect(request.mock.calls[0][1]?.signal).toBeInstanceOf(AbortSignal)
+    } finally { vi.unstubAllGlobals() }
+  })
+
+  it('reports launcher exits and bounded startup failures with target diagnostics', async () => {
+    await expect(waitForPortablePage('http://127.0.0.1:12345', { exitCode: 1, signalCode: null })).rejects.toThrow('launcher exited')
+    await expect(waitForPortablePage('http://127.0.0.1:12345', { exitCode: null, signalCode: 'SIGTERM' })).rejects.toThrow('SIGTERM')
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json([{ type: 'page', url: 'about:blank' }])))
+    try {
+      await expect(waitForPortablePage('http://127.0.0.1:12345', { exitCode: null, signalCode: null }, 20)).rejects.toThrow('about:blank')
+    } finally { vi.unstubAllGlobals() }
+  })
+
+  it('retries transient DevTools connections but fails explicitly on invalid responses', async () => {
+    const request = vi.fn<typeof fetch>()
+      .mockRejectedValueOnce(new TypeError('fetch failed'))
+      .mockResolvedValueOnce(Response.json([{ type: 'page', url: 'file:///C:/Temp/out/renderer/index.html' }]))
+    vi.stubGlobal('fetch', request)
+    const launcher = { exitCode: null, signalCode: null }
+    try {
+      await waitForPortablePage('http://127.0.0.1:12345', launcher)
+      expect(request).toHaveBeenCalledTimes(2)
+      request.mockResolvedValueOnce(new Response('', { status: 503 }))
+      await expect(waitForPortablePage('http://127.0.0.1:12345', launcher)).rejects.toThrow('HTTP 503')
+      request.mockResolvedValueOnce(Response.json({}))
+      await expect(waitForPortablePage('http://127.0.0.1:12345', launcher)).rejects.toThrow('invalid target list')
+    } finally { vi.unstubAllGlobals() }
+  })
+
   it('bumps stable versions without git operations and validates CLI choices', () => {
     expect(nextVersion('0.1.9', 'patch')).toBe('0.1.10')
     expect(nextVersion('1.9.9', 'minor')).toBe('1.10.0')
