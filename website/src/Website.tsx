@@ -393,7 +393,7 @@ export function Website() {
 									</p>
 								</>
 							)}
-							{websiteRelease?.sha256 && (
+							{/* {websiteRelease?.sha256 && (
 								<div className="release-notes">
 									<p>
 										SHA-256:{" "}
@@ -407,7 +407,7 @@ export function Website() {
 										Download checksum file
 									</a>
 								</div>
-							)}
+							)} */}
 							{import.meta.env.VITE_WINDOWS_DOWNLOAD_URL &&
 								!url && (
 									<p role="alert">
@@ -415,9 +415,9 @@ export function Website() {
 										An HTTPS release URL is required.
 									</p>
 								)}
-							<p className="muted">
+							{/* <p className="muted">
 								{companyFeaturesEnabled(import.meta.env.VITE_ENABLE_COMPANY_TAGS) ? 'Company tags require optional Firebase sign-in and active company membership. ' : ''}Logs remain on your machine.
-							</p>
+							</p> */}
 						</article>
 						<p className="muted">
 							Windows x64 setup EXE: run it once to install
