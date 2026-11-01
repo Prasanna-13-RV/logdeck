@@ -2,7 +2,7 @@ import type { EmvTracking } from './emvTracker'
 import type { PositionRange } from './selection'
 import type { CompanyTagPack } from './companyTags'
 import type { UpdateCheckResult, UpdatePageInfo } from './releases'
-import type { WindowsIntegrationInfo } from './windowsIntegration'
+import type { WindowsIntegrationAction, WindowsIntegrationInfo } from './windowsIntegration'
 
 export interface CompanyTagStatus {
   configured: boolean
@@ -121,7 +121,7 @@ export interface DesktopApi {
   startupUpdateCheck: () => Promise<Result<UpdateCheckResult | null>>
   openDownloadPage: () => Promise<Result<void>>
   windowsIntegrationInfo: () => Promise<Result<WindowsIntegrationInfo>>
-  changeWindowsIntegration: (action: 'register' | 'remove') => Promise<Result<WindowsIntegrationInfo>>
+  changeWindowsIntegration: (action: WindowsIntegrationAction) => Promise<Result<WindowsIntegrationInfo>>
   exportStatus: (id: string) => Promise<Result<ExportInfo>>
   cancelExport: (id: string) => Promise<Result<void>>
   cacheInfo: () => Promise<Result<CacheInfo>>

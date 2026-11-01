@@ -235,7 +235,7 @@ test('independent split files, keyboard selection, settings columns and legacy p
     await expect(page.getByRole('tab', { name: 'primary.log', exact: true })).toBeVisible()
     await expect(page.getByRole('tab', { name: 'other.logcat', exact: true })).toHaveCount(0)
     await panel.getByRole('button', { name: 'Split side by side', exact: true }).click()
-    await expect(panes.nth(1).getByRole('button', { name: 'Inspect EMV tag 9F33', exact: true })).toBeVisible()
+    await expect(panes.nth(1).getByRole('button', { name: 'Inspect EMV tag 9F33', exact: true })).toHaveCount(0)
     await page.getByRole('button', { name: 'Appearance and settings', exact: true }).click()
     await page.getByRole('dialog').getByLabel('Show pid column', { exact: true }).uncheck()
     await page.keyboard.press('Escape')
@@ -244,11 +244,8 @@ test('independent split files, keyboard selection, settings columns and legacy p
       await page.getByRole('button', { name: 'Appearance and settings', exact: true }).click()
       await page.getByRole('button', { name: theme, exact: true }).click()
       await page.keyboard.press('Escape')
-      const tag = panes.nth(1).getByRole('button', { name: 'Inspect EMV tag 9F33', exact: true })
-      expect(await tag.evaluate(node => {
-        const style = getComputedStyle(node)
-        return { weight: style.fontWeight, bordered: parseFloat(style.borderTopWidth) > 0, filled: style.backgroundColor !== 'rgba(0, 0, 0, 0)' }
-      })).toEqual({ weight: '700', bordered: true, filled: true })
+      await expect(panes.nth(1).locator('.emv-tag')).toHaveCount(0)
+      await expect(panes.nth(1).locator('tbody')).toContainText('Other file')
     }
     const sessions = await page.evaluate(() => window.logdeck.getSessions())
     if (!sessions.ok) throw new Error(sessions.error)

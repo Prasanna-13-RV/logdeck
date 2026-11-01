@@ -3,6 +3,9 @@ import { mkdtemp, writeFile, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { expectFilterResults } from './viewerAssertions'
+import { offlineEmvTrackingEnabled } from '../../shared/features'
+
+test.skip(!offlineEmvTrackingEnabled, 'Offline EMV tracking is intentionally hidden; visibility is covered by emvVisibility.spec.ts.')
 
 test('automatic offline EMV highlighting, definition/value states, editing handoff and independent views', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'logdeck-emv-'))

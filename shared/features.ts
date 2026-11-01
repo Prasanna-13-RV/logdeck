@@ -5,4 +5,5 @@ export function companyFeaturesEnabled(value: unknown): boolean {
 }
 
 export const logdeckTagline = { first: 'Your logs.', second: 'One powerful deck.' }
+export const offlineEmvTrackingEnabled: boolean = false
 export const officialWebsiteUrl = 'https://logdeck.netlify.app'

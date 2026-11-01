@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
-import type { WindowsIntegrationInfo } from '../../../../shared/windowsIntegration'
+import type { WindowsIntegrationAction, WindowsIntegrationInfo } from '../../../../shared/windowsIntegration'
 
 export function WindowsIntegrationSettings({ onError }: { onError: (message: string) => void }) {
   const [info, setInfo] = useState<WindowsIntegrationInfo | null>(null)
   const [busy, setBusy] = useState(false)
-  async function update(action?: 'register' | 'remove') {
+  async function update(action?: WindowsIntegrationAction) {
     setBusy(true)
     try {
       const result = await (action ? window.logdeck.changeWindowsIntegration(action) : window.logdeck.windowsIntegrationInfo())
@@ -17,10 +17,12 @@ export function WindowsIntegrationSettings({ onError }: { onError: (message: str
   return <section aria-label="Windows Open with">
     <h3>Open with LogDeck</h3>
     <p className="muted">Install LogDeck with the Windows setup EXE. It appears in Settings &gt; Apps &gt; Installed apps, where you can uninstall it. Enable this optional integration to add LogDeck to Windows Open with for .log and .logcat files; your default apps are unchanged.</p>
-    <p className="muted">The LogDeck logo is used for its Open with entry and associated files. To show it on .logcat files in Explorer, choose LogDeck as the default app. Enable again after upgrading to refresh the icon and executable path.</p>
+    {/* <p className="muted">The LogDeck logo is used for its Open with entry and associated files. To show it on .logcat files in Explorer, choose LogDeck as the default app. Enable again after upgrading to refresh the icon and executable path.</p> */}
     <p role="status">{!info ? 'Reading Windows integration...' : !info.available ? 'Available in the packaged Windows app.' : info.registeredPath ? `Registered EXE: ${info.registeredPath}` : 'Not registered for this Windows account.'}</p>
     {info?.available && <p className="muted">Current EXE: {info.executablePath}. If you change the installation folder, enable again from the installed app. To make LogDeck the default, select it in Windows Settings &gt; Apps &gt; Default apps.</p>}
     <button className="secondary-button" disabled={busy || !info?.available} onClick={() => void update('register')}>Enable Open with LogDeck</button>
+    <button className="secondary-button" disabled={busy || !info?.available} onClick={() => void update('defaults')}>Choose LogDeck as default viewer</button>
+    {/* <p className="muted">This button registers LogDeck and opens Windows Default apps. Select LogDeck for both .log and .logcat, then confirm in Windows. Windows 10 may show the general page: choose defaults by file type and search for each extension. Your defaults are not changed silently.</p> */}
     <button className="text-button" disabled={busy || !info?.registeredPath} onClick={() => void update('remove')}>Remove Open with registration</button>
   </section>
 }

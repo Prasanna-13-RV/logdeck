@@ -1,5 +1,30 @@
 import { test, expect } from '@playwright/test'
 
+test('download page explains Windows default viewer setup even when release metadata is unavailable', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', error => errors.push(error.message))
+  await page.route('**/updates/windows.json', route => route.fulfill({ status: 503, json: { error: 'Unavailable' } }))
+  await page.goto('/')
+  await page.getByRole('navigation').getByRole('link', { name: 'Download app' }).click()
+  const guide = page.getByRole('region', { name: 'Make LogDeck your default log viewer' })
+  await expect(guide).toBeVisible()
+  await expect(guide.locator('ol').first().locator('li')).toHaveCount(6)
+  await expect(guide.getByText(/Choose LogDeck as default viewer/)).toBeVisible()
+  await expect(guide.getByText(/In Windows 11/)).toContainText('.logcat')
+  await expect(guide.getByText(/In Windows 10/)).toContainText('choose defaults by file type')
+  await expect(guide.getByText(/Close the development app/)).toContainText('Start menu')
+  await expect(guide.getByText(/If only/)).toContainText('Enable Open with LogDeck')
+  await expect(guide.getByText(/usual per-user installation folder/)).toContainText('%LOCALAPPDATA%\\Programs\\LogDeck')
+  await expect(guide.locator('ol').last().locator('li')).toHaveCount(3)
+  await expect(guide.getByText(/Right-click a saved/)).toContainText('Properties')
+  await page.reload()
+  await expect(guide).toBeVisible()
+  await page.setViewportSize({ width: 320, height: 844 })
+  await expect(guide.getByRole('heading', { name: 'If the button is missing or disabled' })).toBeVisible()
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  expect(errors).toEqual([])
+})
+
 test('public pages, persistent themes, direct routes and mobile layout use the desktop visual template', async ({ page }) => {
   await page.route('**/updates/windows.json', route => route.fulfill({ json: {
     latestVersion: '0.1.0', releaseNotes: 'The website release manifest is maintained independently.',
@@ -33,7 +58,8 @@ test('public pages, persistent themes, direct routes and mobile layout use the d
   await expect(page.locator('html')).toHaveAttribute('data-theme', theme!)
   await page.getByRole('navigation').getByRole('link', { name: 'Features', exact: true }).click()
   await expect(page).toHaveURL(/\/features$/)
-  await expect(page.getByText('Offline EMV knowledge.')).toBeVisible()
+  await expect(page.getByText('Offline EMV knowledge.')).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: 'Understand EMV locally' })).toBeVisible()
   await page.getByRole('navigation').getByRole('link', { name: 'Download app' }).click()
   await expect(page.getByText('LATEST RELEASE · 0.1.0')).toBeVisible()
   await expect(page.getByText(/website release manifest is maintained/)).toBeVisible()
@@ -56,16 +82,17 @@ test('public pages, persistent themes, direct routes and mobile layout use the d
   expect(errors).toEqual([])
 })
 
-test('published GitHub release enables portable download and checksum; metadata failures stay explicit', async ({ page }) => {
+test('published GitHub release enables installer download with checksum details hidden; metadata failures stay explicit', async ({ page }) => {
   const download = 'https://github.com/Prasanna-13-RV/logdeck/releases/download/v1.2.3/LogDeck-1.2.3-windows-x64.exe'
   await page.route('**/updates/windows.json', route => route.fulfill({ json: {
-    latestVersion: '1.2.3', releaseNotes: 'Verified portable release.', publishedAt: '2026-10-25T00:00:00.000Z',
+    latestVersion: '1.2.3', releaseNotes: 'Verified installer release.', publishedAt: '2026-10-25T00:00:00.000Z',
     downloadUrl: download, checksumUrl: download.replace(/LogDeck-.+\.exe$/, 'SHA256SUMS.txt'), sha256: 'a'.repeat(64)
   } }))
   await page.goto('/download')
   await expect(page.getByRole('link', { name: 'Download Windows app' })).toHaveAttribute('href', download)
   await expect(page.getByText('LATEST RELEASE · 1.2.3')).toBeVisible()
-  await expect(page.getByText('a'.repeat(64), { exact: true })).toBeVisible()
+  await expect(page.locator('.release-checksum')).toHaveCount(0)
+  await expect(page.getByRole('link', { name: 'Download checksum file' })).toHaveCount(0)
   await page.setViewportSize({ width: 390, height: 844 })
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   await page.route('**/updates/windows.json', route => route.fulfill({ status: 503, json: { error: 'Unavailable' } }))

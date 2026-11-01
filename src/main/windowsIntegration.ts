@@ -1,9 +1,9 @@
-import { app } from 'electron'
+import { app, shell } from 'electron'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { join } from 'node:path'
 import { stat } from 'node:fs/promises'
-import { windowsIntegrationScript, type WindowsIntegrationInfo } from '../../shared/windowsIntegration'
+import { windowsDefaultAppsUrl, windowsIntegrationScript, type WindowsIntegrationAction, type WindowsIntegrationInfo } from '../../shared/windowsIntegration'
 
 const execute = promisify(execFile)
 
@@ -33,7 +33,8 @@ export async function windowsIntegrationInfo(): Promise<WindowsIntegrationInfo> 
   return { available, executablePath: executablePath(), registeredPath: match?.[1] ?? null }
 }
 
-export async function changeWindowsIntegration(action: 'register' | 'remove') {
-  await run(action)
+export async function changeWindowsIntegration(action: WindowsIntegrationAction) {
+  await run(action === 'defaults' ? 'register' : action)
+  if (action === 'defaults') await shell.openExternal(windowsDefaultAppsUrl)
   return windowsIntegrationInfo()
 }

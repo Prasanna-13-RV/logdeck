@@ -1,3 +1,5 @@
+# bash scripts/publish-release.sh 1.0.2 "Release LogDeck 1.0.2"
+
 #!/usr/bin/env bash
 set -euo pipefail
 

@@ -189,14 +189,16 @@ async function createWindow(initialPath?: string) {
 function registerIpc() {
   ipc('windows:integration-info', async () => windowsIntegrationInfo())
   ipc('windows:integration-change', async (event, action) => {
-    if (action !== 'register' && action !== 'remove') throw new Error('Invalid Windows integration action.')
+    if (action !== 'register' && action !== 'remove' && action !== 'defaults') throw new Error('Invalid Windows integration action.')
     const info = await windowsIntegrationInfo()
     if (!info.available) throw new Error('Use the packaged Windows app to configure Open with.')
     const result = await dialog.showMessageBox(ownedWindow(event), {
       type: 'question',
-      message: action === 'register' ? 'Enable Open with LogDeck for this Windows account?' : 'Remove LogDeck from Open with for this Windows account?',
-      detail: `This does not change default apps or require administrator rights.\nEXE: ${info.executablePath}\nAfter moving or replacing the EXE, register the new location again.`,
-      buttons: ['Cancel', action === 'register' ? 'Enable' : 'Remove'], defaultId: 0, cancelId: 0
+      message: action === 'defaults' ? 'Register LogDeck and open Windows Default apps?' : action === 'register' ? 'Enable Open with LogDeck for this Windows account?' : 'Remove LogDeck from Open with for this Windows account?',
+      detail: action === 'defaults'
+        ? `Windows requires you to confirm default apps. Choose LogDeck for .log and .logcat in the Settings page that opens. On Windows 10, search for each file extension under Default apps.\nNo defaults are changed automatically.\nEXE: ${info.executablePath}`
+        : `This does not change default apps or require administrator rights.\nEXE: ${info.executablePath}\nAfter changing the installation folder, register the new location again.`,
+      buttons: ['Cancel', action === 'defaults' ? 'Open Default apps' : action === 'register' ? 'Enable' : 'Remove'], defaultId: 0, cancelId: 0
     })
     return result.response === 1 ? changeWindowsIntegration(action) : info
   })

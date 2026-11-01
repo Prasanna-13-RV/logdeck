@@ -2,6 +2,7 @@ import { test, expect, _electron as electron } from '@playwright/test'
 import { mkdtemp, writeFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
+import { offlineEmvTrackingEnabled } from '../../shared/features'
 
 test('tools reuse untouched tabs and create independent tabs after use', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'logdeck-tool-tabs-'))
@@ -103,6 +104,7 @@ test('cancelled file pick leaves Compare reusable; a loaded saved document permi
 })
 
 test('opening a log value reuses a blank EMV tab and preserves its seeded data', async () => {
+  test.skip(!offlineEmvTrackingEnabled, 'Log-row EMV editor handoff is hidden with offline tracking.')
   const directory = await mkdtemp(join(tmpdir(), 'logdeck-tool-seed-'))
   const env = Object.fromEntries(Object.entries(process.env).filter((entry): entry is [string, string] => typeof entry[1] === 'string'))
   env.LOGDECK_TEST_USER_DATA = join(directory, 'profile')

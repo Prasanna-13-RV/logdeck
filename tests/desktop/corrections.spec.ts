@@ -120,7 +120,7 @@ test('top-bar filtering is separate from find, severity styling and disjoint cop
   }
 })
 
-test('dump notation recognizes known/unknown EMV tags, bit tables use two columns, receipt converts losslessly', async () => {
+test('dump records stay plain text, bit tables use two columns, receipt converts losslessly', async () => {
   const { directory, desktop, page } = await launch()
   const previousClipboard = await desktop.evaluate(({ clipboard }) => clipboard.readText())
   try {
@@ -136,18 +136,12 @@ test('dump notation recognizes known/unknown EMV tags, bit tables use two column
     const opened = await page.evaluate(path => window.logdeck.openDroppedFile(path), source)
     if (!opened.ok) throw new Error(opened.error)
     const panel = page.locator('.tab-panel:not([hidden])')
-    await expect(panel.locator('.emv-tag')).toHaveCount(9)
-    await panel.getByRole('button', { name: 'Inspect EMV tag 9F13', exact: true }).click()
-    const inspector = panel.getByRole('complementary', { name: 'EMV tag definition' })
-    await expect(inspector).toContainText('Last Online Application Transaction Counter')
-    await expect(inspector).toContainText('0001')
-    await panel.getByRole('button', { name: 'Inspect EMV tag DF01', exact: true }).click()
-    await expect(inspector).toContainText('Unknown tag')
-    await expect(inspector).toContainText('AB')
-    await panel.getByRole('button', { name: 'Inspect EMV tag 70', exact: true }).click()
-    await expect(inspector).toContainText('unavailable')
-    await panel.getByRole('button', { name: 'Inspect EMV tag 9F33', exact: true }).click()
-    await inspector.getByRole('button', { name: 'Open value in EMV editor' }).click()
+    await expect(panel.locator('tbody tr')).toHaveCount(9)
+    await expect(panel.locator('.emv-tag')).toHaveCount(0)
+    await expect(panel.getByRole('complementary', { name: 'EMV tag definition' })).toHaveCount(0)
+    await page.getByRole('button', { name: 'EMV', exact: true }).click()
+    await panel.getByLabel('EMV tag', { exact: true }).selectOption('9F33')
+    await panel.getByLabel('EMV value', { exact: true }).fill('E0F8C8')
     await panel.getByRole('button', { name: 'Decode value', exact: true }).click()
     await expect(panel.getByLabel('Original tag value')).toContainText('E0F8C8')
     await desktop.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1700, 1000))

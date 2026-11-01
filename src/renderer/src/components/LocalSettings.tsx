@@ -31,10 +31,10 @@ export function LocalSettings({ onError }: { onError: (message: string) => void 
   return <section className="local-settings">
     {companyFeaturesEnabled(import.meta.env.VITE_ENABLE_COMPANY_TAGS) && <CompanyTagSettings />}
     <WindowsIntegrationSettings onError={onError} />
-    <h3>Viewer display</h3>
+    {/* <h3>Viewer display</h3>
     <label>Log font size <input type="range" min={10} max={18} aria-label="Log font size" value={settings.fontSize} onChange={event => save({ ...settings, fontSize: Number(event.target.value) })} /> {settings.fontSize}px</label>
-    <label><input type="checkbox" checked={settings.defaultWrap} onChange={event => save({ ...settings, defaultWrap: event.target.checked })} />Use wrapping by default</label>
-    <h3>Log columns</h3>
+    <label><input type="checkbox" checked={settings.defaultWrap} onChange={event => save({ ...settings, defaultWrap: event.target.checked })} />Use wrapping by default</label> */}
+    {/* <h3>Log columns</h3>
     <div className="column-editor" aria-label="Column layout">
       {columns.map((column, index) => <div className="column-control" key={column.id}>
         <label><input type="checkbox" aria-label={`Show ${column.id === 'line' ? 'record' : column.id} column`} disabled={column.visible && columns.filter(value => value.visible).length === 1} checked={column.visible} onChange={event => saveColumns(columns.map(value => value.id === column.id ? { ...value, visible: event.target.checked } : value))} />{column.id === 'line' ? 'record' : column.id}</label>
@@ -46,11 +46,12 @@ export function LocalSettings({ onError }: { onError: (message: string) => void 
         <button className="text-button" aria-label={`Move ${column.id} right`} disabled={index === columns.length - 1} onClick={() => moveColumn(column.id, 1)}>Right</button>
       </div>)}
       <button className="secondary-button" onClick={() => saveColumns(defaultColumns)}>Restore default columns</button>
-    </div>
+    </div> */}
     <h3>Rebuildable index cache</h3>
     <p className="muted">{cache ? `${cache.files} indexes · ${(cache.bytes / 1_000_000).toFixed(1)} MB · ${cache.active} active sources` : 'Reading local cache inventory...'}</p>
     <p className="muted">Clear removes only recognized inactive index files. Active sources, logs, saved filters and appearance are preserved.</p>
-    <button className="secondary-button" disabled={busy} onClick={() => void refresh(true)}>Clear inactive indexes</button>
+    <button className="secondary-button" disabled={busy} onClick={() => void refresh(true)}>Clear inactive indexes</button> <br />
+    
     <button className="text-button" disabled={busy} onClick={() => void refresh()}>Refresh cache inventory</button>
   </section>
 }

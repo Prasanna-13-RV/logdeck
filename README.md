@@ -55,8 +55,8 @@ Electron and requires network access; normal local file viewing does not.
   previous/next change, copying changes, undo/redo, safe Save/Save As.
 - Local font/default-wrap settings and inactive-index cleanup.
 - Strict hex/ASCII and lossless Latin-1 byte conversion; a local original-versus-edited EMV workspace.
-- Automatic context-aware EMV tag highlights in displayed log records, clickable
-  offline definitions/value checks, per-view disable and supported-value editor handoff.
+- Offline EMV tracking in log rows is disabled and hidden. The separate EMV
+  workspace remains available for manual decoding and editing.
 - Index progress, cancellation/reopen, cache reuse, and independent windows.
 - Explicit errors for invalid input, unsupported encoding, and source changes.
 - Matching public website: Home, Features, Download and an authenticated company-admin publishing page.
@@ -148,7 +148,12 @@ open **Settings > Windows integration**, and enable the registration. It registe
 file paths. Registration does not replace your current default application.
 For `.logcat` files to display the LogDeck logo in Explorer, choose LogDeck in
 Windows **Open with > Choose another app** and set it as the default for that
-extension. Re-enable registration after changing the installation directory so
+extension. Alternatively, click **Choose LogDeck as default viewer** in LogDeck
+Settings. After confirmation, LogDeck registers itself and opens Windows Default
+apps. Choose LogDeck for both `.log` and `.logcat` and confirm in Windows.
+Windows 10 may open the general page; select defaults by file type and search for
+each extension. Windows requires user confirmation; no default is silently changed.
+Re-enable registration after changing the installation directory so
 Windows uses the new path. Registration refreshes the shell's association cache;
 Explorer may also need a refresh before the icon changes.
 After changing `images/logdeck.png`, run
@@ -419,29 +424,14 @@ log editing, or complete Beyond Compare parity.
 
 ## Hex / ASCII and EMV
 
-Opening a log enables **EMV on** for that view. The file worker recognizes explicit
-`Tag 95: 8000000000`, `tag: 9f 02[6]: ...`, `tag[31]:9f01`, known multi-byte
-`9F02[6]:...` pairs, `T: 9F33 L: 3 V: E0F8C8`, `#[T]: 70 L: 41` container
-headers, and complete single-line `TLV:...` payloads. Bare numbers such as
-95/82 in PIDs, timestamps or amounts are not highlighted. Click a tag (or focus it
-and press Enter) for its local name/definition, source location, original hex,
-validation reason and dictionary version. Normal row clicks still only select.
+Offline EMV tracking is disabled through `offlineEmvTrackingEnabled` in
+`shared/features.ts`. Log rows remain plain text, and the tracker toggle,
+definition inspector and editor handoff are hidden. Open **EMV** in the navbar
+to use manual decoding and bit editing.
 
-This uses a bundled **60-tag** common reference dictionary, **version 1.1.0**, not live
-internet queries. Definitions do not require Firebase, AI or uploading your logs.
-Detection follows displayed/prefetched records as you navigate: **not a whole-file
-scan or EMV inventory**. Each segment is limited to 16,384 characters, 64 tag
-occurrences and 256 retained value bytes; incomplete/invalid data is explicitly
-marked. Turn tracking off independently in each tab/split. Unknown explicit tags
-show no-definition status; reference coverage is broader than editable decoders.
-Explicit dump recognition does not require hardcoding each tag: unknown tags are
-still clickable. A maintained local dictionary supplies known names/definitions;
-9F33 is included, and 9F13 identifies the Last Online Application Transaction Counter.
-`L` is a decimal byte count; declared/fixed-length mismatches are reported. Container
-headers without `V` correctly show an unavailable value rather than borrowing another row.
-For a valid supported value, **Open value in EMV editor** prefills an independent
-tool tab. Verify the scheme and press **Decode value** before editing its baseline.
-Logs are never rewritten. Proprietary/scheme-specific layouts are not inferred.
+The worker-level tracker and dictionary remain for internal tests, but the viewer
+does not request tracking for ranges, segments or Find results. There is no
+whole-file EMV scan or inventory. Logs are never rewritten.
 
 Navbar buttons open independent local tool tabs. No payment data is sent to
 paymentcardtools.com or another service, and editing never modifies a source log.

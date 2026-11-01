@@ -8,6 +8,7 @@ import { containsPosition, selectionCount, togglePosition, type PositionRange } 
 import type { EmvOccurrence, EmvSeed } from '../../../../shared/emvTracker'
 import { EmvInspector, type EmvSelection } from './EmvInspector'
 import type { CompanyTagPack } from '../../../../shared/companyTags'
+import { offlineEmvTrackingEnabled } from '../../../../shared/features'
 
 export function formatBytes(bytes: number) {
   return bytes >= 1_000_000 ? `${(bytes / 1_000_000).toFixed(1)} MB` : `${(bytes / 1000).toFixed(1)} KB`
@@ -76,7 +77,7 @@ export function LogViewer({ session, active, onError, onSplit, onEmv, keyboardAc
   const [controls, setControls] = useState(true)
   const [advancedFilters, setAdvancedFilters] = useState(false)
   const [wrap, setWrap] = useState(false)
-  const [emvEnabled, setEmvEnabled] = useState(true)
+  const [emvEnabled, setEmvEnabled] = useState(offlineEmvTrackingEnabled)
   const [emvSelection, setEmvSelection] = useState<EmvSelection | null>(null)
   const [companyPack, setCompanyPack] = useState<CompanyTagPack | null>(null)
   const [selected, setSelected] = useState<number | null>(null)
@@ -135,6 +136,7 @@ export function LogViewer({ session, active, onError, onSplit, onEmv, keyboardAc
   const highlightTerms = appliedHighlight ? [appliedHighlight] : []
 
   useEffect(() => {
+    if (!offlineEmvTrackingEnabled) return
     let stopped = false
     const refresh = () => {
       void window.logdeck.companyTagStatus().then(result => {
@@ -480,11 +482,11 @@ export function LogViewer({ session, active, onError, onSplit, onEmv, keyboardAc
         </form>
         <button className="icon-button" aria-label="Find text (Ctrl+F)" onClick={() => { setFindOpen(true); requestAnimationFrame(() => searchInput.current?.focus()) }}><Search size={16} /></button>
         <button className={`icon-button ${wrap ? 'pressed' : ''}`} aria-label="Wrap all columns" aria-pressed={wrap} title="Wrap all columns" onClick={toggleWrap}><WrapText size={18} /></button>
-        <button className="text-button" aria-label="Track EMV tags" aria-pressed={emvEnabled}
+        {offlineEmvTrackingEnabled && <button className="text-button" aria-label="Track EMV tags" aria-pressed={emvEnabled}
           title="Context-aware detection on displayed records only; no whole-file scan" onClick={() => {
             generation.current++; cache.current.clear(); setReadError(null); setEmvSelection(null)
             setEmvEnabled(value => !value); setRevision(value => value + 1)
-          }}>EMV {emvEnabled ? 'on' : 'off'}</button>
+          }}>EMV {emvEnabled ? 'on' : 'off'}</button>}
         <button className="icon-button" aria-label="Copy selected records" onClick={() => void copySelection().catch(error => onError(String(error)))}><Copy size={16} /></button>
         {onSplit && <button className="text-button" disabled={session.status !== 'ready'} onClick={onSplit}>Split view</button>}
         <form className="line-jump" onSubmit={event => { event.preventDefault(); void goToSource().catch(error => onError(String(error))) }}>

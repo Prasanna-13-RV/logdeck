@@ -4,6 +4,9 @@ export interface WindowsIntegrationInfo {
   registeredPath: string | null
 }
 
+export type WindowsIntegrationAction = 'register' | 'remove' | 'defaults'
+export const windowsDefaultAppsUrl = 'ms-settings:defaultapps?registeredAppUser=LogDeck'
+
 export function windowsIntegrationScript(action: 'status' | 'register' | 'remove', executable: string): string {
   if (!/^[A-Za-z]:\\.+\.exe$/i.test(executable) || /[\u0000-\u001f"]/u.test(executable)) throw new Error('Invalid executable path.')
   const literal = `'${executable.replaceAll("'", "''")}'`

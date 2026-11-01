@@ -260,8 +260,8 @@ export function Website() {
 							<h2>Keep the context. Lose the noise.</h2>
 							<p>
 								Filter in the sidebar, search displayed text,
-								compare changes, and inspect {companyFeaturesEnabled(import.meta.env.VITE_ENABLE_COMPANY_TAGS) ? 'global and company' : 'offline global'}
-								EMV references without rewriting your logs.
+								compare changes, and decode values in the EMV
+								workspace without rewriting your logs.
 							</p>
 							{nav("/download", "Find your desktop download")}
 						</section>
@@ -293,13 +293,6 @@ export function Website() {
 									Top search highlights without hiding rows.
 									Ctrl-click, complete-record copy and ordered
 									export keep the context.
-								</p>
-							</article>
-							<article className="tool-card">
-								<h2>{companyFeaturesEnabled(import.meta.env.VITE_ENABLE_COMPANY_TAGS) ? 'Both kinds of EMV knowledge.' : 'Offline EMV knowledge.'}</h2>
-								<p>
-									60 bundled common global definitions work
-									offline. {companyFeaturesEnabled(import.meta.env.VITE_ENABLE_COMPANY_TAGS) ? 'Authorized company users manually download a versioned company pack from Settings. Both definitions appear when IDs overlap; proprietary meanings never replace the global reference.' : 'No account or company JSON is required.'}
 								</p>
 							</article>
 							<article className="tool-card">
@@ -432,6 +425,59 @@ export function Website() {
 							the publisher and checksum before running. macOS and
 							Linux builds are not offered.
 						</p>
+						<section
+							className="tool-card download-card default-viewer-guide"
+							aria-labelledby="default-viewer-heading">
+							<h2 id="default-viewer-heading">Make LogDeck your default log viewer</h2>
+							<p>
+								Choose LogDeck for both <code>.log</code> and{" "}
+								<code>.logcat</code> files. Windows requires your
+								confirmation; neither this website nor Open with
+								registration changes your defaults automatically.
+							</p>
+							<ol>
+								<li>Run the Windows setup EXE once, then open the installed LogDeck from the Start menu.</li>
+								<li>In LogDeck, open <strong>Settings &gt; Open with LogDeck</strong>.</li>
+								<li>Click <strong>Choose LogDeck as default viewer</strong> and approve the confirmation. This registers LogDeck and opens Windows Default apps.</li>
+								<li>In Windows 11, select LogDeck if needed, then choose it for <code>.log</code> and <code>.logcat</code>. Confirm each choice.</li>
+								<li>In Windows 10, if the general Default apps page opens, choose defaults by file type, find each extension and select LogDeck.</li>
+								<li>Double-click a saved <code>.log</code> or <code>.logcat</code> file in File Explorer to check that it opens in LogDeck.</li>
+							</ol>
+							<h3>If the button is missing or disabled</h3>
+							<p>
+								Close the development app and open the installed LogDeck
+								from the Start menu. Windows integration is available only
+								in the installed Windows app; older releases may not include
+								the default-viewer button.
+							</p>
+							<p>
+								If only <strong>Enable Open with LogDeck</strong> is available,
+								click it, then open <strong>Windows Settings &gt; Apps &gt; Default apps</strong>{" "}
+								and choose LogDeck for each extension.
+							</p>
+							<h3>Choose the installed EXE manually</h3>
+							<p>
+								The usual per-user installation folder is{" "}
+								<code>%LOCALAPPDATA%\Programs\LogDeck</code>, not Program Files.
+								Paste that path into File Explorer&apos;s address bar to find{" "}
+								<code>LogDeck.exe</code>. If you chose a different folder
+								during setup, use that folder instead. Do not select the
+								downloaded setup EXE or development <code>electron.exe</code>.
+							</p>
+							<ol>
+								<li>Right-click a saved <code>.log</code> file, open <strong>Properties</strong>, then click <strong>Change</strong> beside &quot;Opens with&quot;.</li>
+								<li>Select LogDeck. If it is missing, use <strong>More apps</strong> / <strong>Look for another app on this PC</strong> (or the browse option) and select <code>LogDeck.exe</code> in the installation folder.</li>
+								<li>Confirm with <strong>OK</strong> and apply the change. Repeat for a <code>.logcat</code> file, then double-click each file to verify the association.</li>
+							</ol>
+							<p>
+								After changing the installation folder, enable Open with
+								again from the installed app to refresh its registered path.
+							</p>
+							<p>
+								To undo the change, select another app for each extension
+								in Windows Default apps.
+							</p>
+						</section>
 					</section>
 				) : path === "/admin" && companyFeaturesEnabled(import.meta.env.VITE_ENABLE_COMPANY_TAGS) ? (
 					<Admin />

@@ -29,6 +29,9 @@
 .detail-grid .tool-card { margin: 0; }
 .download-card { max-width: 570px; margin: 30px auto; padding: 32px; }
 .download-card > svg { color: var(--accent); margin: 12px 0; }
+.default-viewer-guide { text-align: left; }
+.default-viewer-guide ol { padding-left: 24px; line-height: 1.8; }
+.default-viewer-guide li { margin: 12px 0; }
 .release-checksum { overflow-wrap: anywhere; }
 .site-notice, .site-error { margin: 20px; padding: 16px; border: 1px solid var(--accent-border); background: var(--accent-soft); border-radius: 8px; line-height: 1.8; }
 .site-error { color: var(--error); background: var(--error-bg); border-color: var(--error); }

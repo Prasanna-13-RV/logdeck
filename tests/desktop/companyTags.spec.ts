@@ -2,6 +2,7 @@ import { test, expect, _electron as electron } from '@playwright/test'
 import { mkdir, mkdtemp, writeFile, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
+import { offlineEmvTrackingEnabled } from '../../shared/features'
 
 test('company pack cache follows the build-time opt-in flag', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'logdeck-company-ui-'))
@@ -28,7 +29,8 @@ test('company pack cache follows the build-time opt-in flag', async () => {
     expect(opened.ok).toBe(true)
     const panel = page.locator('.tab-panel:not([hidden])')
     if (process.env.VITE_ENABLE_COMPANY_TAGS !== 'true') {
-      await expect(panel.getByRole('button', { name: 'Inspect EMV tag 9F33', exact: true })).toBeVisible()
+      if (offlineEmvTrackingEnabled) await expect(panel.getByRole('button', { name: 'Inspect EMV tag 9F33', exact: true })).toBeVisible()
+      else await expect(panel.locator('.emv-tag')).toHaveCount(0)
       await expect(panel.getByRole('button', { name: 'Inspect EMV tag DF8101', exact: true })).toHaveCount(0)
       const status = await page.evaluate(() => window.logdeck.companyTagStatus())
       expect(status.ok && status.value.installed).toBeNull()
@@ -40,16 +42,23 @@ test('company pack cache follows the build-time opt-in flag', async () => {
       expect(network).toEqual([])
       return
     }
-    await panel.getByRole('button', { name: 'Inspect EMV tag DF8101', exact: true }).click()
-    const inspector = panel.getByRole('complementary', { name: 'EMV tag definition' })
-    await expect(inspector).toContainText('Company-only status')
-    await expect(inspector).toContainText('Synthetic company tags v3')
-    await expect(inspector).toContainText('Company length check: matches')
-    await panel.getByRole('button', { name: 'Inspect EMV tag 9F33', exact: true }).click()
-    await expect(inspector).toContainText('Terminal Capabilities')
-    await expect(inspector).toContainText('Company capability context')
-    await expect(inspector).toContainText('Company length check: mismatch')
-    await expect(inspector).toContainText('valid:')
+    if (offlineEmvTrackingEnabled) {
+      await panel.getByRole('button', { name: 'Inspect EMV tag DF8101', exact: true }).click()
+      const inspector = panel.getByRole('complementary', { name: 'EMV tag definition' })
+      await expect(inspector).toContainText('Company-only status')
+      await expect(inspector).toContainText('Synthetic company tags v3')
+      await expect(inspector).toContainText('Company length check: matches')
+      await panel.getByRole('button', { name: 'Inspect EMV tag 9F33', exact: true }).click()
+      await expect(inspector).toContainText('Terminal Capabilities')
+      await expect(inspector).toContainText('Company capability context')
+      await expect(inspector).toContainText('Company length check: mismatch')
+      await expect(inspector).toContainText('valid:')
+    } else {
+      await expect(panel.locator('tbody')).toContainText('DF8101: AABB')
+      await expect(panel.locator('.emv-tag')).toHaveCount(0)
+      const status = await page.evaluate(() => window.logdeck.companyTagStatus())
+      expect(status.ok && status.value.installed?.version).toBe(3)
+    }
     await page.getByRole('button', { name: /Login/ }).click()
     const dialog = page.getByRole('dialog')
     await expect(dialog).toContainText('Firebase is not configured')
