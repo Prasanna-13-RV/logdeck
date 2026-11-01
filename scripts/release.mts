@@ -35,7 +35,7 @@ try {
 const manifest = options.ci ? parseReleaseManifest(originalManifest.toString()) : {
   latestVersion: version,
   publishedAt: new Date().toISOString(),
-  releaseNotes: options.notes?.trim() || `LogDeck ${version}: portable Windows release. Download and run without an installer.`
+  releaseNotes: options.notes?.trim() || `LogDeck ${version}: Windows installer with Start menu shortcuts and Windows Settings uninstall support.`
 }
 if (manifest.latestVersion !== version) throw new Error('Package and committed release manifest versions differ.')
 if (options.ci && process.env.GITHUB_REF_NAME !== `v${version}`) throw new Error('Release tag must match package.json.')

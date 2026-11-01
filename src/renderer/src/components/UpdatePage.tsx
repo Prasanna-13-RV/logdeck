@@ -70,7 +70,7 @@ export function UpdatePage({ startupResult, startupError = '', onUsed }: { start
         <small>{result.publishedAt && <>Published {new Date(result.publishedAt).toLocaleDateString()} · </>}Checked {new Date(result.checkedAt).toLocaleString()}</small>
       </section>}
       <p className="update-privacy"><ShieldCheck size={15} /> The startup check and this button request only the small public GitHub version file. Logs, company tags, and account information are not sent.</p>
-      <p className="muted update-limit">Updates are manual: download the new portable EXE from the official website, verify its checksum and publisher, close this app, then run the new EXE. Re-enable Open with LogDeck from Settings if its path changed. This page does not replace files or verify executable signatures.</p>
+      <p className="muted update-limit">Updates are manual: download the Windows setup EXE from the official website, verify its checksum and publisher, close LogDeck, then run setup to update it. Launch LogDeck from the Start menu afterward. Uninstall through Windows Settings &gt; Apps &gt; Installed apps. This page does not install updates or verify executable signatures.</p>
     </section>
   </main>
 }

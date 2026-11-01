@@ -25,9 +25,14 @@ module.exports = {
     executableName: 'LogDeck',
     signAndEditExecutable: true
   },
-  // The custom NSIS entry point is a portable launcher, not an installer.
   nsis: {
-    script: 'scripts/portable-launcher.nsi',
+    oneClick: false,
+    perMachine: false,
+    allowElevation: false,
+    allowToChangeInstallationDirectory: true,
+    runAfterFinish: false,
+    deleteAppDataOnUninstall: false,
+    include: 'scripts/installer-hooks.nsh',
     differentialPackage: false,
     packElevateHelper: false
   },

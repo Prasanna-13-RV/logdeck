@@ -1,4 +1,4 @@
-name: Publish portable Windows release
+name: Publish Windows installer release
 
 on:
   push:

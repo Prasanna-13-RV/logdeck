@@ -142,13 +142,13 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\prepare-branding
 npm.cmd run build
 ```
 
-To enable **Open with LogDeck**, keep the portable EXE in a permanent location,
+To enable **Open with LogDeck**, install LogDeck using the Windows setup EXE,
 open **Settings > Windows integration**, and enable the registration. It registers
 `.log` and `.logcat` for the current user, using the branded EXE icon and quoted
 file paths. Registration does not replace your current default application.
 For `.logcat` files to display the LogDeck logo in Explorer, choose LogDeck in
 Windows **Open with > Choose another app** and set it as the default for that
-extension. Re-enable registration after moving or upgrading the portable EXE so
+extension. Re-enable registration after changing the installation directory so
 Windows uses the new path. Registration refreshes the shell's association cache;
 Explorer may also need a refresh before the icon changes.
 After changing `images/logdeck.png`, run
@@ -162,16 +162,13 @@ replacing the artwork to refresh browsers that cache tab icons.
 
 The release smoke test checks the embedded EXE icon/product identity, native
 window title, and opening a `.logcat` file using the registered command for both
-the unpacked app and portable launcher. Registry checks use an isolated test
-subtree and remove it afterwards; they do not change your real file defaults.
-The portable smoke test waits for the loaded renderer in DevTools before attaching
-Playwright. The debugging port alone is not a window-readiness signal; attaching
-too early can leave Playwright with no pages even though the app opens normally.
-It also checks cold/warm startup, verifies the native loading window appears and
-then hides when the viewer is shown, and checks the cached runtime is not rewritten
-on a repeat launch.
+the installed application. Verification installs into a dedicated test folder,
+checks the Installed apps entry, first/repeat launches and uninstall cleanup.
+It refuses to run when an existing LogDeck installation or registration is found.
+Optional Open with defaults are not changed; test-owned registrations are removed
+by the uninstaller. Existing logs and preferences are preserved.
 
-### Portable Windows releases
+### Windows installer releases
 
 Use Windows x64 and Node.js 22.18+ (22.22 recommended for parity with CI).
 Dependencies are pinned in the lockfile; run `npm ci` on a fresh checkout.
@@ -183,9 +180,10 @@ npm.cmd run release -- --bump minor --notes "Describe this release."
 ```
 
 The default increments the patch version, synchronizes the lockfile, runs unit
-tests/typecheck/build, packages a **single portable EXE**, launches both packaged
-entry points with a synthetic log and verifies SQLite, generates SHA-256 and release
-metadata, and builds the website. Output is `release/<version>/`; the distributable
+tests/typecheck/build, packages a **Windows setup EXE**, temporarily installs it,
+launches the installed app with a synthetic log and verifies SQLite and uninstall,
+then generates SHA-256 and release metadata, and builds the website.
+Output is `release/<version>/`; the distributable
 is `LogDeck-<version>-windows-x64.exe`. Nothing is committed, tagged, pushed or
 uploaded by this command. Failures restore the original version and manifest;
 failed artifacts remain for diagnosis. Move that exact version's artifact folder
@@ -198,32 +196,25 @@ publishes the EXE, checksum and metadata together. Generated EXEs stay gitignore
 do not commit them. The Netlify website/app checks use the **published GitHub
 release**, not a possibly ahead-of-publication version on the main branch.
 See the exact publishing and Netlify setup steps in
-[the distribution guide](docs/Firebase-and-website-setup.md#6-portable-release-preparation-and-github-publication).
+[the distribution guide](docs/Firebase-and-website-setup.md#6-installer-release-preparation-and-github-publication).
 
-Users save the EXE in a permanent folder and run it without a setup wizard.
-The EXE contains a compressed Electron runtime and English Chromium locale files.
-Its first launch extracts the runtime to `%LOCALAPPDATA%\LogDeck\portable`; later
-launches reuse it rather than extracting and deleting it every time. The cache is
-keyed by version and payload hash, so replacing the EXE with a rebuilt release
-uses a separate runtime. No administrator rights, shortcuts or installer registry
-entries are required. After closing all LogDeck windows, old runtime cache folders
-can be deleted to reclaim space; deleting the current cache causes re-extraction
-on the next launch. Logs and settings are stored separately from this cache.
-The native launcher shows preparation/loading status while the runtime starts,
-then hides once the viewer is visible. Command-line logs begin indexing after the
-viewer loads instead of holding back the entire window. Like electron-builder's
-standard portable launcher, it does not rescan the entire EXE's NSIS CRC on every
-launch; extraction still checks the archive and releases include SHA-256 checksums.
-The optimized 0.1.1 build measured 100.8 MiB (previously 154.7 MiB). On the
-development machine, the no-log smoke test observed loading feedback in 11.8
-seconds with a fresh cache and 1.5 seconds on a repeat launch. The viewer was ready
-in 50.0 and 5.6 seconds respectively. First-launch extraction and Windows scanning
-can still delay even the loading window; these are not cross-machine guarantees.
+Users run the setup EXE once, choose the installation directory, then launch
+LogDeck from the Start menu or desktop shortcut. The per-user installer creates
+an entry in **Windows Settings > Apps > Installed apps** with an uninstaller.
+Normal launches run the installed Electron executable directly, without the
+portable extraction/startup box. Setup still shows installation progress.
+The setup includes a compressed runtime and English-only Chromium locales.
+Run a newer setup after closing LogDeck to update the installation. Uninstall
+removes application files and shortcuts, but retains preferences and log indexes.
+Older portable EXEs are not installed apps: close them and delete the old EXE
+manually after confirming the installed version works. Old portable runtime
+caches are not used or removed by the new installer.
 **Settings > Open with LogDeck** optionally registers `.log` and `.logcat` for
 that Windows account, after confirmation, without administrator rights or
 changing defaults. Windows Default apps controls the default selection.
-After moving or replacing the versioned EXE, enable the integration again; remove
-it before deleting LogDeck. Preferences/cache remain in the Windows account's
+After changing the installation directory, enable the integration again.
+Uninstall removes Open with entries only when they point to that installation.
+Preferences/cache remain in the Windows account's
 app-data folders. Unsigned builds may show SmartScreen warnings; code signing
 requires your own publisher certificate.
 
@@ -543,11 +534,12 @@ Email/password company-tag authentication is implemented as an optional integrat
 but requires `VITE_ENABLE_COMPANY_TAGS=true`, your Firebase project configuration
 and deployed rules.
 
-There is no setup wizard or automatic download/installation. Optional per-user
+There is a per-user setup wizard and Windows Settings uninstall support, but no
+automatic download/installation. Optional per-user
 Windows Open With registration is available in Settings; signing requires your
 publisher certificate. Startup notices are notification-only; the existing Updates
-page links to the official Download page when configured. Users obtain and replace
-the portable EXE themselves.
+page links to the official Download page. Users obtain and run a newer setup EXE
+themselves.
 
 See [the release requirements](docs/spec.md) and
 [the technical specification](docs/LogDeck-technical-documentation.md).

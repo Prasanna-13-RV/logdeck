@@ -15,8 +15,8 @@
 
 This repository does not contain a real Firebase project, deployed site, signing
 certificate or published GitHub release. Local tests are not a live production
-deployment. `npm run release` builds a portable EXE separately from Vite's code
-builds; there is intentionally no installation wizard.
+deployment. `npm run release` builds a per-user Windows setup EXE separately from
+Vite's code builds, with an Installed apps entry and uninstaller.
 
 ## 1. Create and configure Firebase
 
@@ -296,7 +296,7 @@ produce different bytes). Do not deploy local preparation checksums as if they
 verified a different CI-built EXE. Netlify avoids that risk by reading the actual
 GitHub digest. There is no automatic installer, macOS or Linux build.
 
-## 6. Portable release preparation and GitHub publication
+## 6. Installer release preparation and GitHub publication
 
 On Windows x64 with Node 22.18+ and dependencies installed:
 
@@ -313,15 +313,17 @@ Choose one command, not both for the same release. The default is a patch bump.
 2. Bump `package.json` and `package-lock.json`, without a git commit or tag.
 3. Run unit tests, typecheck and desktop production build. The build embeds
    `https://logdeck.netlify.app` and its `/updates/windows.json` endpoint.
-4. Package a Windows x64 portable EXE using `electron-builder`. SQLite 13 supplies
+4. Package a Windows x64 setup EXE using `electron-builder`. SQLite 13 supplies
    a Node-API prebuild: no compiler rebuild is attempted. Native modules are
-   unpacked from ASAR. Both the extracted runtime and the portable launcher must
+   unpacked from ASAR. The installed runtime must
    open a synthetic log and load SQLite successfully.
 5. Write `release/<version>/LogDeck-<version>-windows-x64.exe`, `SHA256SUMS.txt`,
    `windows.json` and `release-notes.txt`; update the local website manifest and
    build the website. The local checksum describes the local EXE, not a later CI build.
 6. Print the manual publishing commands. No commit, tag, push, GitHub upload,
-   Netlify deployment or Windows registration is performed.
+   Netlify deployment or permanent Windows registration is performed. Verification
+   temporarily installs/uninstalls on a clean Windows account and restores its
+   test-owned registrations.
 
 On failure, the version/lockfile/manifest are restored and the command exits nonzero.
 Build outputs may remain for diagnosis; move only that version's output folder
@@ -388,45 +390,38 @@ Company-tag configuration in CI can use repository variables
 `VITE_FIREBASE_API_KEY` / `VITE_FIREBASE_PROJECT_ID`; these are public web settings.
 Real publisher identity/certificate issuance is not automated.
 
-### Users: no setup wizard
+### Users: install once, then launch from the Start menu
 
-Save the EXE in a permanent folder, run it, then optionally select
+Run the setup EXE, launch the installed app, then optionally select
 **Settings > Enable Open with LogDeck**. After a native confirmation, LogDeck adds
 only per-user ProgID/OpenWith/capabilities entries for `.log` / `.logcat`.
 It does not overwrite extension defaults, Windows `UserChoice`, or other apps.
 Select the default in Windows **Settings > Apps > Default apps** if desired.
 Spaces and Unicode paths are supported; opened files remain read-only.
-Click **Remove Open with registration** before deleting the app.
+Use Installed apps to uninstall; owned Open with registration is removed
+automatically. You can also remove the optional registration in LogDeck Settings.
 
 Desktop checks now read root GitHub `version.json`; see
 [GitHub version notifications](GitHub-version-checking.md) for setup and testing.
 The startup notice is notification-only; failed checks do not show it.
-Users can still use **Updates -> official Download page -> download EXE -> close
-the old app -> run the new EXE**. Re-enable Open with from the new version/location.
-The old filename registration will not magically follow a moved EXE. Preferences,
-company pack cache and indexes remain in the account's app-data folders, so this
-is a no-installer distribution, not a zero-footprint or USB-profile mode.
+Use **Updates -> official Download page -> download setup -> close LogDeck ->
+run setup**, then start the installed app from the Start menu. Setup shows its
+wizard/progress only during installation; normal launches have no portable startup
+box. The app appears in **Windows Settings > Apps > Installed apps** with Uninstall.
+The installer is per-user, keeps preferences on uninstall and includes English
+Chromium locales and a maximally compressed runtime. Optional Open with entries
+are removed on uninstall only if they point to that installation; defaults are
+never reassigned. Re-enable integration if you change the installation folder.
 
-The single EXE uses a custom NSIS launcher (not the default NSIS installer) with
-maximum 7z compression and English Chromium locale files. It extracts Electron
-once into `%LOCALAPPDATA%\LogDeck\portable`, then reuses that runtime. Each cache
-is keyed by the version and payload hash; the complete payload hash is checked
-in its completion marker before reuse. Extraction is staged and serialized so
-simultaneous launches cannot use a partially extracted runtime. No administrator
-rights, installer registry entries or shortcuts are required.
-After closing LogDeck, obsolete cache folders can be deleted; removing the current
-cache causes extraction on the next launch. Settings and log indexes remain separate.
-The launcher displays a native preparation/loading window and hides it after the
-Electron viewer signals that it is visible. The viewer loads before indexing a
-command-line log. Repeat launches skip the full-EXE NSIS CRC scan, matching the
-standard portable target; archive extraction checks and published SHA-256 checksums
-remain. Windows scanning can still delay the loading window before launcher code runs.
-The packaged-runtime test verifies cold and warm launches with no initial log,
-checks the loading window appears and hides, checks that warm startup does not
-rewrite the runtime, and opens a synthetic log
-through SQLite. Both launches also cover opening another log while already running,
-including a filename containing spaces and Unicode. Startup measurements are
-development results, not cross-machine guarantees.
+To migrate from portable 0.1.1/1.0.0: close all old windows, run the new setup,
+launch from the new shortcut, and delete the old portable EXE after verification.
+Old portable files/caches have no uninstaller and are not removed automatically.
+Preferences, company packs and indexes stay in the account's app-data folders.
+
+Package verification refuses to touch existing installations/registrations. On a
+clean runner it installs into a dedicated folder, checks the Installed apps entry,
+launches twice, reads a synthetic log through SQLite, checks second-instance
+forwarding, then uninstalls and checks registration/application-file removal.
 
 ## 7. Verification
 

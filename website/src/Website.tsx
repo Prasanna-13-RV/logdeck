@@ -386,7 +386,7 @@ export function Website() {
 									</button>
 									<p role="status">
 										A verified Windows release has not been
-										linked. No portable EXE is available
+										linked. No Windows setup EXE is available
 										from this page yet.
 									</p>
 								</>
@@ -418,11 +418,12 @@ export function Website() {
 							</p>
 						</article>
 						<p className="muted">
-							Windows x64 portable EXE: save it in a permanent
-							folder and run it, with no installation wizard.
+							Windows x64 setup EXE: run it once to install
+							LogDeck, then launch from the Start menu.
+							Uninstall through Windows Settings &gt; Apps &gt; Installed apps.
 							Optional Settings &gt; Open with LogDeck
 							registration does not change default apps. After
-							updating or moving the EXE, enable it again.
+							changing the installation folder, enable it again.
 							Preferences and rebuildable caches use your Windows
 							account folders, not the EXE folder. Unsigned builds
 							can display a Windows SmartScreen warning; verify

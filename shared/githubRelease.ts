@@ -19,7 +19,7 @@ export function githubReleaseManifest(value: unknown): ReleaseManifest {
   const checksum = assets.find(asset => asset.name === 'SHA256SUMS.txt' && asset.state === 'uploaded')
   if (!executable || !checksum || typeof executable.digest !== 'string' || !/^sha256:[a-f0-9]{64}$/.test(executable.digest) ||
       typeof executable.size !== 'number' || executable.size < 1_000_000) {
-    throw new Error('The GitHub release is missing a complete portable EXE, digest or checksum asset.')
+    throw new Error('The GitHub release is missing a complete Windows EXE, digest or checksum asset.')
   }
   const base = `https://github.com/${configuration.repository}/releases/download/${release.tag_name}`
   if (executable.browser_download_url !== `${base}/${filename}` || checksum.browser_download_url !== `${base}/SHA256SUMS.txt`) {

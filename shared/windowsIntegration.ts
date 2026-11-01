@@ -5,7 +5,7 @@ export interface WindowsIntegrationInfo {
 }
 
 export function windowsIntegrationScript(action: 'status' | 'register' | 'remove', executable: string): string {
-  if (!/^[A-Za-z]:\\.+\.exe$/i.test(executable) || /[\u0000-\u001f"]/u.test(executable)) throw new Error('Invalid portable executable path.')
+  if (!/^[A-Za-z]:\\.+\.exe$/i.test(executable) || /[\u0000-\u001f"]/u.test(executable)) throw new Error('Invalid executable path.')
   const literal = `'${executable.replaceAll("'", "''")}'`
   const common = `
 $ErrorActionPreference = 'Stop'

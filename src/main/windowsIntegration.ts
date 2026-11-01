@@ -14,7 +14,7 @@ function executablePath() {
 async function run(action: 'status' | 'register' | 'remove') {
   if (process.platform !== 'win32' || !app.isPackaged) throw new Error('Windows integration is available only in the packaged Windows app.')
   const executable = executablePath()
-  if (!(await stat(executable)).isFile()) throw new Error('The portable EXE was moved or removed. Run it from its permanent location.')
+  if (!(await stat(executable)).isFile()) throw new Error('The LogDeck executable was moved or removed. Reinstall LogDeck before enabling Open with.')
   const script = windowsIntegrationScript(action, executable)
   const { stdout } = await execute(join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe'),
     ['-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')],

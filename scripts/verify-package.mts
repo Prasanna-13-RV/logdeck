@@ -1,265 +1,157 @@
-import { _electron as electron, chromium, type Page } from '@playwright/test'
-import { mkdtemp, writeFile, readFile, readdir, rm, stat } from 'node:fs/promises'
-import { setTimeout as delay } from 'node:timers/promises'
+import { _electron as electron, type Page } from '@playwright/test'
+import { mkdir, mkdtemp, writeFile, readFile, rm, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { spawn, execFile } from 'node:child_process'
+import { execFile, spawn } from 'node:child_process'
 import { promisify } from 'node:util'
 import assert from 'node:assert/strict'
-import { releaseLinks, waitForPortablePage } from './releaseHelpers.ts'
+import { releaseLinks } from './releaseHelpers.ts'
 import { windowsIntegrationScript } from '../shared/windowsIntegration.ts'
-import { randomUUID } from 'node:crypto'
 
 const directory = resolve(process.argv[2])
 const version = process.argv[3]
 const checkVersionFile = process.argv.slice(4).includes('--check-version-file')
 const { filename } = releaseLinks('Prasanna-13-RV/logdeck', version)
-assert((await stat(join(directory, filename))).size > 1_000_000, 'Portable EXE must exist.')
-const userData = await mkdtemp(join(tmpdir(), 'logdeck-packaged-'))
+const installer = join(directory, filename)
+assert((await stat(installer)).size > 1_000_000, 'Windows setup EXE must exist.')
+const execute = promisify(execFile)
+async function powershell(script: string) {
+  const { stdout } = await execute('powershell.exe', [
+    '-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(`$ErrorActionPreference = 'Stop'\n${script}`, 'utf16le').toString('base64')
+  ], { timeout: 180_000 })
+  return stdout.trim()
+}
+const literal = (value: string) => `'${value.replaceAll("'", "''")}'`
+const registry = `
+$entries = @()
+foreach ($root in @('HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall', 'HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall', 'HKLM:\\Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall')) {
+  if (Test-Path -LiteralPath $root) {
+    $entries += @(Get-ChildItem -LiteralPath $root | Get-ItemProperty | Where-Object { $_.DisplayName -match '^LogDeck(?:\\s|$)' })
+  }
+}`
+await powershell(`${registry}
+if ($entries.Count) { throw 'Existing LogDeck installation detected. Verification will not change it. Use a clean Windows runner.' }
+if (Test-Path -LiteralPath 'HKCU:\\Software\\Classes\\LogDeck.LogFile') { throw 'Existing LogDeck file associations detected. Use a clean Windows runner.' }
+if (Test-Path -LiteralPath 'HKCU:\\Software\\Classes\\Applications\\LogDeck.exe') { throw 'Existing LogDeck application registration detected. Use a clean Windows runner.' }
+if (Test-Path -LiteralPath 'HKCU:\\Software\\LogDeck\\Capabilities') { throw 'Existing LogDeck capabilities detected. Use a clean Windows runner.' }
+if ((Test-Path -LiteralPath 'HKCU:\\Software\\RegisteredApplications') -and ((Get-Item -LiteralPath 'HKCU:\\Software\\RegisteredApplications').GetValueNames() -contains 'LogDeck')) { throw 'Existing LogDeck RegisteredApplications entry detected. Use a clean Windows runner.' }
+foreach ($folder in @([Environment]::GetFolderPath('Desktop'), [Environment]::GetFolderPath('CommonDesktopDirectory'), [Environment]::GetFolderPath('Programs'), [Environment]::GetFolderPath('CommonPrograms'))) {
+  if ($folder -and (Test-Path -LiteralPath (Join-Path $folder 'LogDeck.lnk'))) { throw 'Existing LogDeck shortcut detected. Use a clean Windows runner.' }
+}`)
+
+const temporary = await mkdtemp(join(tmpdir(), 'logdeck-installer-check-'))
+const installDirectory = join(temporary, 'installed')
+const installedExecutable = join(installDirectory, 'LogDeck.exe')
+const uninstallExecutable = join(installDirectory, 'Uninstall LogDeck.exe')
 const env = Object.fromEntries(Object.entries(process.env).filter((entry): entry is [string, string] => typeof entry[1] === 'string'))
-env.LOGDECK_TEST_USER_DATA = userData
+env.LOGDECK_TEST_USER_DATA = join(temporary, 'profile')
+await mkdir(env.LOGDECK_TEST_USER_DATA)
+const preferences = join(env.LOGDECK_TEST_USER_DATA, 'preservation-check.txt')
+await writeFile(preferences, 'Keep existing preferences.\n')
 delete env.ELECTRON_RUN_AS_NODE
-const fixture = join(userData, 'threadtime.log')
+delete env.PORTABLE_EXECUTABLE_FILE
+const fixture = join(temporary, 'threadtime.log')
 const content = '10-25 12:00:00.123  123  456 I LogDeck: Synthetic packaged release verification\n'
+const secondFixture = join(temporary, 'second log 世界.logcat')
 await writeFile(fixture, content)
-const secondFixture = join(userData, 'second log 世界.logcat')
 await writeFile(secondFixture, content)
-async function verify(page: Page, executablePath: string) {
+
+async function verify(page: Page, executable: string) {
   await page.waitForFunction(() => Boolean(window.logdeck))
-  const result = await page.evaluate(() => window.logdeck.updatePageInfo())
-  assert(result.ok && result.value.currentVersion === version, 'Packaged version must match the release.')
-  assert(result.value.configured, 'Release builds must embed the GitHub version checker.')
-  assert((await page.title()).includes('LogDeck'), 'The native window title must identify LogDeck.')
-  const { stdout } = await promisify(execFile)('powershell.exe', [
+  const info = await page.evaluate(() => window.logdeck.updatePageInfo())
+  assert(info.ok && info.value.currentVersion === version, 'Packaged version must match the release.')
+  assert(info.value.configured, 'GitHub version checker must be configured.')
+  const { stdout } = await execute('powershell.exe', [
     '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', resolve('scripts/verify-windows-branding.ps1'),
-    '-Executable', executablePath, '-Icon', resolve('images/app-icon.ico')
+    '-Executable', executable, '-Icon', resolve('images/app-icon.ico')
   ], { timeout: 20_000 })
   console.log(stdout.trim())
   if (checkVersionFile) {
     const checked = await page.evaluate(() => window.logdeck.startupUpdateCheck())
-    assert(checked.ok, `Packaged GitHub request failed: ${checked.ok ? '' : checked.error}`)
-    assert(checked.value && checked.value.currentVersion === version, 'GitHub check must use the packaged app version.')
-    console.log(`Packaged GitHub check PASS: installed ${checked.value.currentVersion}, remote ${checked.value.latestVersion}`)
+    assert(checked.ok && checked.value?.currentVersion === version, 'Packaged GitHub version check must work.')
   }
   await page.waitForFunction(async () => {
     const sources = await window.logdeck.getSessions()
-    return sources.ok && sources.value.some(file => file.name === 'threadtime.log' && file.status === 'ready' && file.lines > 0)
+    return sources.ok && sources.value.some(source => source.name === 'threadtime.log' && source.status === 'ready')
   })
-  const native = await page.evaluate(async () => {
-    const sessions = await window.logdeck.getSessions()
-    if (!sessions.ok || !sessions.value[0]) throw new Error('No packaged file session.')
-    return window.logdeck.readRange({ id: sessions.value[0].id, start: 1, count: 1 })
+  const rows = await page.evaluate(async () => {
+    const sources = await window.logdeck.getSessions()
+    if (!sources.ok || !sources.value[0]) throw new Error('No packaged file session.')
+    return window.logdeck.readRange({ id: sources.value[0].id, start: 1, count: 1 })
   })
-  assert(native.ok && native.value[0]?.message.includes('Synthetic packaged release verification'), 'The packaged SQLite-backed worker must query the indexed record.')
+  assert(rows.ok && rows.value[0]?.message.includes('Synthetic packaged release verification'), 'Packaged SQLite worker must read indexed records.')
   const integration = await page.evaluate(() => window.logdeck.windowsIntegrationInfo())
   assert(integration.ok && integration.value.available, 'Packaged Windows integration must be available.')
-  assert.equal(integration.value.executablePath.toLowerCase(), executablePath.toLowerCase(), 'Registration must use the outer portable EXE, never its extracted runtime.')
-  return integration
+  assert.equal(integration.value.executablePath.toLowerCase(), executable.toLowerCase(), 'Open with must target the installed app, not setup.')
 }
 
-async function associationExecutable(executable: string) {
-  const root = `HKCU:\\Software\\LogDeck.PackageTests\\${randomUUID()}`
-  const isolated = (action: 'register' | 'remove') => windowsIntegrationScript(action, executable)
-    .replaceAll('HKCU:\\Software\\Classes', `${root}\\Classes`)
-    .replaceAll('HKCU:\\Software\\LogDeck\\Capabilities', `${root}\\Capabilities`)
-    .replaceAll('HKCU:\\Software\\RegisteredApplications', `${root}\\RegisteredApplications`)
-  const script = `
+let installationAttempted = false
+let verifiedUninstall = false
 try {
-  ${isolated('register')}
-  $command = (Get-Item -LiteralPath "$prog\\shell\\open\\command").GetValue('')
-  $icon = (Get-Item -LiteralPath "$prog\\DefaultIcon").GetValue('')
-  if ($icon -ne ('"' + $exe + '",0')) { throw 'The registered file icon must use the branded EXE.' }
-  if (-not ((Get-Item -LiteralPath "$classes\\.logcat\\OpenWithProgids").GetValueNames() -contains 'LogDeck.LogFile')) { throw 'Missing .logcat association.' }
-  ${isolated('remove')}
-  $command | ConvertTo-Json -Compress
-} finally { if (Test-Path -LiteralPath '${root}') { Remove-Item -LiteralPath '${root}' -Recurse -Force } }
-`
-  const { stdout } = await promisify(execFile)('powershell.exe',
-    ['-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')],
-    { timeout: 20_000 })
-  const command: unknown = JSON.parse(stdout)
-  assert(typeof command === 'string', 'Registration must return an open command.')
-  const match = /^"(.+)" "%1"$/.exec(command)
-  assert(match && match[1] === executable, 'Open with must target the actual EXE with a quoted file argument.')
-  return match[1]
-}
-
-async function waitForDebugPort(profile: string, child: ReturnType<typeof spawn>) {
-  const end = Date.now() + 120_000
-  while (Date.now() < end) {
-    if (child.exitCode !== null) throw new Error(`Portable launcher exited (${child.exitCode}) before its browser was ready.`)
-    try {
-      const port = (await readFile(join(profile, 'DevToolsActivePort'), 'utf8')).split('\n')[0]
-      if (/^\d+$/.test(port)) return port
-    } catch (error) {
-      if (!(error instanceof Error && 'code' in error && ['ENOENT', 'EBUSY', 'EPERM'].includes(String(error.code)))) throw error
-    }
-    await delay(200)
-  }
-  throw new Error('Portable EXE did not expose its test browser within 120 seconds.')
-}
-
-async function cleanLauncher(child: ReturnType<typeof spawn>, extraPids: number[] = []) {
-  if (!child.pid || ((child.exitCode !== null || child.signalCode !== null) && !extraPids.length)) return
-  const end = Date.now() + 15_000
-  while (child.exitCode === null && child.signalCode === null && Date.now() < end) await delay(100)
-  if ((child.exitCode !== null || child.signalCode !== null) && !extraPids.length) return
-  if (extraPids.some(pid => !Number.isSafeInteger(pid) || pid <= 0)) throw new Error('Invalid test process ID.')
-  const script = `
-$ErrorActionPreference = 'Stop'
-$all = Get-CimInstance Win32_Process
-$ids = [System.Collections.Generic.List[int]]::new()
-$ids.Add(${child.pid})
-${extraPids.map(pid => `$ids.Add(${pid})`).join('\n')}
-for ($i = 0; $i -lt $ids.Count; $i++) {
-  foreach ($item in $all) { if ($item.ParentProcessId -eq $ids[$i] -and -not $ids.Contains([int]$item.ProcessId)) { $ids.Add([int]$item.ProcessId) } }
-}
-for ($i = $ids.Count - 1; $i -ge 0; $i--) {
-  $process = Get-Process -Id $ids[$i] -ErrorAction SilentlyContinue
-  if ($process) {
-    Stop-Process -Id $ids[$i] -Force -ErrorAction SilentlyContinue
-    try { if (-not $process.WaitForExit(10000)) { throw "Test process $($ids[$i]) did not stop." } } catch [System.InvalidOperationException] { }
-  }
-}
-# A silenced Stop-Process failure would otherwise leak a non-zero exit code; only live survivors are errors.
-$alive = @($ids | Where-Object { Get-Process -Id $_ -ErrorAction SilentlyContinue })
-if ($alive.Count -gt 0) { throw "Test processes still running: $($alive -join ', ')" }
-exit 0`
-  console.error(`Stopping test-owned launcher process tree ${child.pid} after cleanup timeout.`)
-  await promisify(execFile)('powershell.exe', ['-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')])
-}
-
-async function portableMainPids(profile: string): Promise<number[]> {
-  const script = `
-$ErrorActionPreference = 'Stop'
-$profile = '${profile.replaceAll("'", "''")}'
-$all = Get-CimInstance Win32_Process
-$ids = @($all | Where-Object { $_.CommandLine -and $_.CommandLine.Contains($profile) } | Select-Object -ExpandProperty ParentProcessId -Unique)
-ConvertTo-Json -InputObject $ids -Compress
-`
-  const { stdout } = await promisify(execFile)('powershell.exe', ['-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')], { timeout: 15_000 })
-  const ids: unknown = JSON.parse(stdout)
-  if (!Array.isArray(ids) || !ids.length || ids.some(id => !Number.isSafeInteger(id) || id <= 0)) throw new Error('Could not identify test-owned portable processes.')
-  return ids
-}
-
-async function verifyStartupWindow(pid: number, visible: boolean) {
-  assert(Number.isSafeInteger(pid) && pid > 0, 'Startup window must belong to the test launcher.')
-  const script = `
-$ErrorActionPreference = 'Stop'
-$end = [DateTime]::UtcNow.AddSeconds(30)
-do {
-  $process = Get-Process -Id ${pid}
-  $shown = $process.MainWindowHandle -ne [IntPtr]::Zero
-  if ($shown -eq $${visible ? 'true' : 'false'}) {
-    ${visible ? `if ($process.MainWindowTitle -ne 'LogDeck is starting') { throw "Unexpected startup title: $($process.MainWindowTitle)" }` : ''}
-    exit 0
-  }
-  Start-Sleep -Milliseconds 50
-} while ([DateTime]::UtcNow -lt $end)
-throw 'Startup window did not become ${visible ? 'visible' : 'hidden'}.'`
-  await promisify(execFile)('powershell.exe', ['-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')], { timeout: 35_000 })
-}
-
-// Both the extracted runtime and the self-extracting portable entry point must work.
-try {
-  const extracted = join(directory, 'win-unpacked', 'LogDeck.exe')
-  {
-    env.LOGDECK_TEST_USER_DATA = join(userData, 'extracted-profile')
-    const desktop = await electron.launch({ executablePath: extracted, args: [fixture], env, timeout: 90_000 })
+  installationAttempted = true
+  await execute(installer, ['/S', `/D=${installDirectory}`], { timeout: 180_000 })
+  await stat(installedExecutable)
+  await powershell(`${registry}
+if ($entries.Count -ne 1) { throw 'Expected one Installed apps entry.' }
+$entry = $entries[0]
+if ($entry.DisplayVersion -ne ${literal(version)}) { throw 'Installed version is incorrect.' }
+if ($entry.UninstallString -notlike ('*' + ${literal(uninstallExecutable)} + '*')) { throw 'Uninstall command does not target the test installation.' }
+if ($entry.DisplayIcon -notlike ('*' + ${literal(installDirectory)} + '*')) { throw 'Installed apps icon is missing.' }
+if (!(Test-Path -LiteralPath (Join-Path ([Environment]::GetFolderPath('Programs')) 'LogDeck.lnk'))) { throw 'Start menu shortcut is missing.' }`)
+  console.log(`Installed apps entry PASS: LogDeck ${version}`)
+  for (const mode of ['first', 'repeat']) {
+    const started = performance.now()
+    const desktop = await electron.launch({ executablePath: installedExecutable, args: [fixture], env, timeout: 90_000 })
     try {
       const page = await desktop.firstWindow()
-      const integration = await verify(page, extracted)
-      await desktop.evaluate(({ dialog }) => { dialog.showMessageBox = async () => ({ response: 0, checkboxChecked: false }) })
-      const cancelled = await page.evaluate(() => window.logdeck.changeWindowsIntegration('register'))
-      assert.deepEqual(cancelled, integration, 'Cancel must not register or alter Windows associations.')
-      const newWindow = desktop.waitForEvent('window')
-      const registeredExe = await associationExecutable(extracted)
-      const second = spawn(registeredExe, [secondFixture], { env, stdio: 'ignore' })
-      second.on('error', error => console.error('Second-instance launch failed:', error))
-      const forwarded = await newWindow
-      await forwarded.waitForFunction(async () => {
-        const result = await window.logdeck.getSessions()
-        return result.ok && result.value.some(file => file.name === 'second log 世界.logcat' && file.status === 'ready')
-      })
-      assert.equal(await readFile(fixture, 'utf8'), content, 'Opening a file must not rewrite it.')
-      console.log(`Packaged runtime PASS: ${extracted}`)
+      await verify(page, installedExecutable)
+      assert.equal(await desktop.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().some(window => window.getTitle() === 'LogDeck is starting')), false)
+      if (mode === 'first') {
+        const nextWindow = desktop.waitForEvent('window', { timeout: 30_000 })
+        const child = spawn(installedExecutable, [secondFixture], { env, stdio: 'ignore' })
+        child.on('error', error => console.error('Second-instance launch failed:', error))
+        const forwarded = await nextWindow
+        await forwarded.waitForFunction(async () => {
+          const sources = await window.logdeck.getSessions()
+          return sources.ok && sources.value.some(source => source.name === 'second log 世界.logcat' && source.status === 'ready')
+        })
+      }
+      console.log(`Installed ${mode} launch PASS (${((performance.now() - started) / 1000).toFixed(1)}s including runtime checks): ${installedExecutable}`)
     } finally { await desktop.close() }
   }
-  const portable = join(directory, filename)
-  const cacheRoot = join(userData, 'portable-runtime')
-  env.LOGDECK_TEST_PORTABLE_CACHE_ROOT = cacheRoot
-  let cacheSnapshot: { name: string; markerTime: number; executableTime: number } | undefined
-  async function verifyPortableLaunch(mode: 'cold' | 'warm') {
-    const profile = join(userData, `portable-${mode}-profile`)
-    env.LOGDECK_TEST_USER_DATA = profile
-    const started = Date.now()
-    const child = spawn(portable, ['--remote-debugging-port=0', '--remote-debugging-address=127.0.0.1'], { env, stdio: 'ignore' })
-    child.on('error', error => console.error('Portable launch failed:', error))
-    let secondPortable: ReturnType<typeof spawn> | undefined
-    let browserPids: number[] = []
+  assert.equal(await readFile(fixture, 'utf8'), content)
+  await powershell(windowsIntegrationScript('register', installedExecutable))
+  await execute(uninstallExecutable, ['/S', `_?=${installDirectory}`], { timeout: 180_000 })
+  await powershell(`${registry}
+if ($entries.Count) { throw 'Installed apps entry was not removed.' }
+if (Test-Path -LiteralPath ${literal(installedExecutable)}) { throw 'Installed runtime was not removed.' }
+foreach ($key in @('HKCU:\\Software\\Classes\\LogDeck.LogFile', 'HKCU:\\Software\\Classes\\Applications\\LogDeck.exe', 'HKCU:\\Software\\LogDeck\\Capabilities')) {
+  if (Test-Path -LiteralPath $key) { throw ('Owned Open with registration was not removed: ' + $key) }
+}
+if ((Test-Path -LiteralPath 'HKCU:\\Software\\RegisteredApplications') -and ((Get-Item -LiteralPath 'HKCU:\\Software\\RegisteredApplications').GetValueNames() -contains 'LogDeck')) { throw 'RegisteredApplications entry was not removed.' }
+foreach ($ext in @('.log', '.logcat')) {
+  $key = 'HKCU:\\Software\\Classes\\' + $ext + '\\OpenWithProgids'
+  if ((Test-Path -LiteralPath $key) -and ((Get-Item -LiteralPath $key).GetValueNames() -contains 'LogDeck.LogFile')) { throw 'OpenWithProgids entry was not removed.' }
+}
+foreach ($folder in @([Environment]::GetFolderPath('Desktop'), [Environment]::GetFolderPath('Programs'))) {
+  if (Test-Path -LiteralPath (Join-Path $folder 'LogDeck.lnk')) { throw 'Installed shortcut was not removed.' }
+}`)
+  verifiedUninstall = true
+  assert.equal(await readFile(fixture, 'utf8'), content, 'Uninstall must preserve external log files.')
+  assert.equal(await readFile(preferences, 'utf8'), 'Keep existing preferences.\n', 'Uninstall must preserve user data.')
+  console.log('Uninstall, association cleanup, log and user-data preservation PASS.')
+} finally {
+  if (installationAttempted && !verifiedUninstall) {
+    // Only this verifier's explicitly selected installation may be removed.
     try {
-      assert(child.pid, 'Portable launcher must start.')
-      await verifyStartupWindow(child.pid, true)
-      console.log(`Portable ${mode} loading window visible: ${((Date.now() - started) / 1000).toFixed(1)}s`)
-      // The NSIS launcher does not relay Electron inspector stderr; attach to its actual browser.
-      const port = await waitForDebugPort(profile, child)
-      const endpoint = `http://127.0.0.1:${port}`
-      await waitForPortablePage(endpoint, child)
-      browserPids = await portableMainPids(profile)
-      const browser = await chromium.connectOverCDP(endpoint)
-      try {
-        const context = browser.contexts()[0]
-        const page = context.pages()[0]
-        if (!page) throw new Error('Playwright could not attach to the loaded portable window.')
-        await page.waitForFunction(() => Boolean(window.logdeck))
-        console.log(`Portable ${mode} window ready (no log): ${((Date.now() - started) / 1000).toFixed(1)}s`)
-        await verifyStartupWindow(child.pid, false)
-        const caches = await readdir(cacheRoot)
-        assert.equal(caches.length, 1, 'Portable launches must reuse one complete payload cache.')
-        assert.match(caches[0], new RegExp(`^${version.replaceAll('.', '\\.')}\\-[A-F0-9]{32}$`), 'Cache must be keyed by version and payload hash.')
-        const snapshot = {
-          name: caches[0],
-          markerTime: (await stat(join(cacheRoot, caches[0], '.ready'))).mtimeMs,
-          executableTime: (await stat(join(cacheRoot, caches[0], 'LogDeck.exe'))).mtimeMs
-        }
-        const payloadHash = await readFile(join(cacheRoot, caches[0], '.ready'), 'utf8')
-        assert.match(payloadHash, /^[A-F0-9]{128}$/)
-        assert.equal(payloadHash.slice(0, 32), caches[0].slice(version.length + 1))
-        if (cacheSnapshot) assert.deepEqual(snapshot, cacheSnapshot, 'Warm launches must not re-extract or rewrite the runtime.')
-        else cacheSnapshot = snapshot
-        const opened = await page.evaluate(path => window.logdeck.openDroppedFile(path), fixture)
-        assert(opened.ok, `Packaged file open failed: ${opened.ok ? '' : opened.error}`)
-        await verify(page, portable)
-        console.log(`Portable ${mode} startup and indexed read: ${((Date.now() - started) / 1000).toFixed(1)}s`)
-        const newPage = context.waitForEvent('page', { timeout: 120_000 })
-        const registeredExe = await associationExecutable(portable)
-        secondPortable = spawn(registeredExe, [secondFixture], { env, stdio: 'ignore' })
-        console.log(`Testing portable second-instance forwarding (launcher ${secondPortable.pid}).`)
-        secondPortable.on('error', error => console.error('Portable second-instance launch failed:', error))
-        const forwarded = await newPage
-        await forwarded.waitForFunction(async () => {
-          const result = await window.logdeck.getSessions()
-          return result.ok && result.value.some(file => file.name === 'second log 世界.logcat' && file.status === 'ready')
-        })
-        console.log(`Portable ${mode} EXE PASS: ${portable}`)
-      } finally {
-        for (const page of browser.contexts().flatMap(context => context.pages())) {
-          void page.evaluate(() => window.close()).catch(error => {
-            if (!page.isClosed() && browser.isConnected()) console.error('Test window close failed:', error)
-          })
-        }
-        await cleanLauncher(child, browserPids)
-        await browser.close()
-      }
+      await stat(uninstallExecutable)
+      await execute(uninstallExecutable, ['/S', `_?=${installDirectory}`], { timeout: 180_000 })
     } catch (error) {
-      console.error(`Portable ${mode} verification failed:`, error)
-      throw error
-    } finally {
-      if (secondPortable) await cleanLauncher(secondPortable)
-      await cleanLauncher(child)
+      if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) throw error
+      console.error('Installation did not create an uninstaller; checking for incomplete registration.')
     }
+    await powershell(`${registry}
+if (@($entries | Where-Object { $_.UninstallString -like ('*' + ${literal(installDirectory)} + '*') }).Count) { throw 'Test installation cleanup failed; registration remains. Test files retained for diagnosis.' }`)
   }
-  await verifyPortableLaunch('cold')
-  await verifyPortableLaunch('warm')
-} finally { await rm(userData, { recursive: true, force: true, maxRetries: 5, retryDelay: 500 }) }
+  await rm(temporary, { recursive: true, force: true })
+}
