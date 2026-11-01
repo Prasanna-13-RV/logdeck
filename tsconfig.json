@@ -14,5 +14,5 @@
     "skipLibCheck": true,
     "types": ["node", "vite/client"]
   },
-  "include": ["src", "shared", "tests", "website", "scripts", "netlify", "*.ts", "*.mts"]
+  "include": ["src", "shared", "tests", "website", "scripts", "netlify", "api", "*.ts", "*.mts"]
 }

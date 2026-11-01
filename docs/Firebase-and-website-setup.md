@@ -11,7 +11,8 @@
 - No Firebase SDK dependency, analytics, log upload or background version polling.
 - Portable Windows x64 packaging, optional per-user Open with registration,
   local release preparation and tag-triggered GitHub release publication.
-- Netlify production routing and a GitHub-backed public release metadata function.
+- Vercel production routing and a GitHub-backed public release metadata function.
+  The existing Netlify configuration remains available for compatibility.
 
 This repository does not contain a real Firebase project, deployed site, signing
 certificate or published GitHub release. Local tests are not a live production
@@ -19,6 +20,31 @@ deployment. `npm run release` builds a per-user Windows setup EXE separately fro
 Vite's code builds, with an Installed apps entry and uninstaller.
 
 ## 1. Create and configure Firebase
+
+### Deploy the website to Vercel
+
+1. Import this GitHub repository into Vercel and use the repository root as
+   **Root Directory** (not `website`). The root `vercel.json` selects Vite,
+   `npm run build:website` and the `website/dist` output directory.
+2. In Project Settings, select **Node.js 22.x**. Set
+   `ELECTRON_SKIP_BINARY_DOWNLOAD=1` for all deployment environments to avoid
+   downloading the desktop runtime during dependency installation.
+3. Leave company features off (`VITE_ENABLE_COMPANY_TAGS=false`). To enable them
+   intentionally, override the flag in Vercel's environment settings and provide
+   the Firebase public settings documented below, then redeploy.
+4. Deploy. Vercel serves SPA routes through `index.html` and rewrites
+   `/updates/windows.json` to the Node.js function at `/api/windows-release`.
+   This function validates the actual latest public GitHub release assets and
+   checksum, not the static preview manifest. Missing releases return HTTP 503.
+5. Check `/`, `/features`, `/download`, a direct route reload, `/favicon.ico`,
+   and `/updates/windows.json` on the assigned Vercel domain. The security headers
+   match the existing production policy.
+
+No live Vercel deployment has been performed by these repository changes.
+The desktop official download URL remains `https://logdeck.netlify.app` until
+the new production domain is confirmed. After confirmation, update the root
+release configuration, desktop official-download constant and relevant
+environment settings before publishing another desktop release.
 
 Company features default **off** on both website and desktop, even if Firebase
 credentials or a previously downloaded company JSON pack exist. Leave
