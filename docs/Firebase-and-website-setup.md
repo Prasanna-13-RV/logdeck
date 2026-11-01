@@ -36,6 +36,9 @@ Vite's code builds, with an Installed apps entry and uninstaller.
    `/updates/windows.json` to the Node.js function at `/api/windows-release`.
    This function validates the actual latest public GitHub release assets and
    checksum, not the static preview manifest. Missing releases return HTTP 503.
+   The release route runs before filesystem lookup so the bundled static
+   `windows.json` preview cannot shadow the function. The function uses Vercel's
+   Node request/response handler.
 5. Check `/`, `/features`, `/download`, a direct route reload, `/favicon.ico`,
    and `/updates/windows.json` on the assigned Vercel domain. The security headers
    match the existing production policy.
