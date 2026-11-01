@@ -9,12 +9,14 @@ export default defineConfig({
   use: { channel: 'msedge', trace: 'retain-on-failure' },
   projects: [
     { name: 'public', testMatch: 'public.spec.ts', use: { baseURL: 'http://127.0.0.1:5174' } },
-    { name: 'configured-admin', testMatch: 'admin.spec.ts', use: { baseURL: 'http://127.0.0.1:5175' } }
+    { name: 'configured-admin', testMatch: 'admin.spec.ts', use: { baseURL: 'http://127.0.0.1:5175' } },
+    { name: 'production', testMatch: 'production.spec.ts', use: { baseURL: 'http://127.0.0.1:5176' } }
   ],
   webServer: [
     { command: 'npm.cmd run dev:website', url: 'http://127.0.0.1:5174', reuseExistingServer: false,
-      env: { VITE_FIREBASE_API_KEY: '', VITE_FIREBASE_PROJECT_ID: '', VITE_WINDOWS_DOWNLOAD_URL: '' } },
+      env: { VITE_ENABLE_COMPANY_TAGS: 'false', VITE_FIREBASE_API_KEY: '', VITE_FIREBASE_PROJECT_ID: '', VITE_WINDOWS_DOWNLOAD_URL: '' } },
     { command: 'npm.cmd run dev:website -- --port 5175', url: 'http://127.0.0.1:5175', reuseExistingServer: false,
-      env: { VITE_FIREBASE_API_KEY: 'synthetic-public-api-key', VITE_FIREBASE_PROJECT_ID: 'demo-logdeck', VITE_WINDOWS_DOWNLOAD_URL: '' } }
+      env: { VITE_ENABLE_COMPANY_TAGS: 'true', VITE_FIREBASE_API_KEY: 'synthetic-public-api-key', VITE_FIREBASE_PROJECT_ID: 'demo-logdeck', VITE_WINDOWS_DOWNLOAD_URL: '' } },
+    { command: 'npm.cmd run preview:website -- --port 5176', url: 'http://127.0.0.1:5176', reuseExistingServer: false }
   ]
 })

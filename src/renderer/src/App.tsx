@@ -1,12 +1,13 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { Calculator, Columns2, FolderOpen, Monitor, Moon, Plus, Settings2, ShieldCheck, Sun, UserRound, X, AppWindow, CreditCard, RefreshCw } from 'lucide-react'
-import brandMark from '../../../images/brand-mark.png'
+import brandMark from '../../../images/logdeck.png'
 import type { Result, SessionInfo, Theme } from '../../../shared/contracts'
 import { useWorkspace } from './state'
 import { Home } from './components/Home'
 import { SplitWorkspace } from './components/SplitWorkspace'
 import { LocalSettings } from './components/LocalSettings'
 import { CompanyTagSettings } from './components/CompanyTagSettings'
+import { companyFeaturesEnabled } from '../../../shared/features'
 import { UpdatePage } from './components/UpdatePage'
 import { UpdateNotice } from './components/UpdateNotice'
 import { Modal } from './components/Modal'
@@ -45,8 +46,13 @@ export function App() {
   const [updateError, setUpdateError] = useState('')
   const openingHome = useRef<string | null>(null)
   const compareState = useRef(new Map<string, { dirty: boolean; busy: boolean }>())
+  const usedToolTabs = useRef(new Set<string>())
+  const markToolUsed = useCallback((id: string) => { usedToolTabs.current.add(id) }, [])
   const splitting = useRef(false)
-  const compareStatus = useCallback((id: string, dirty: boolean, busy: boolean) => { compareState.current.set(id, { dirty, busy }) }, [])
+  const compareStatus = useCallback((id: string, dirty: boolean, busy: boolean) => {
+    compareState.current.set(id, { dirty, busy })
+    if (dirty) usedToolTabs.current.add(id)
+  }, [])
   useEffect(() => {
     let stopped = false
     void window.logdeck.startupUpdateCheck().then(result => {
@@ -85,6 +91,8 @@ export function App() {
     if (parent?.kind === 'log') { setTabs(previous.map(tab => tab.id === parent.id ? { ...parent, second: undefined } : tab)); return }
     const index = previous.findIndex(tab => tab.id === id)
     if (index === -1) return
+    usedToolTabs.current.delete(id)
+    compareState.current.delete(id)
     let remaining = previous.filter(tab => tab.id !== id)
     if (!remaining.length) remaining = [{ id: crypto.randomUUID(), kind: 'home' }]
     setTabs(remaining)
@@ -135,10 +143,24 @@ export function App() {
   }, [theme, appearanceReady])
 
   const newTab = useCallback((kind: 'home' | 'calculator' | 'emv' | 'compare' | 'updates' = 'home', seed?: EmvSeed) => {
+    const untouched = kind === 'home' ? undefined : tabsRef.current.find(tab => tab.kind === kind && !usedToolTabs.current.has(tab.id))
+    if (untouched) {
+      if (seed) {
+        usedToolTabs.current.add(untouched.id)
+        const next = tabsRef.current.map(tab => tab.id === untouched.id ? { id: tab.id, kind, seed } : tab)
+        tabsRef.current = next
+        setTabs(next)
+      }
+      setActive(untouched.id)
+      return
+    }
     if (kind === 'compare' && tabsRef.current.filter(tab => tab.kind === 'compare').length >= 2) { setError('Two Compare workspaces are already open. Close one before opening another.'); return }
     if (tabsRef.current.length >= 20) { setError('Close a tab or use a new window (20 tabs per window).'); return }
     const tab: Tab = { id: crypto.randomUUID(), kind, seed }
-    setTabs(previous => [...previous, tab])
+    if (seed) usedToolTabs.current.add(tab.id)
+    const next = [...tabsRef.current, tab]
+    tabsRef.current = next
+    setTabs(next)
     setActive(tab.id)
   }, [])
   const closeTab = useCallback(async (id: string) => {
@@ -251,12 +273,12 @@ export function App() {
           <button className="nav-link" onClick={() => newTab('updates')}><RefreshCw size={15} /> Updates</button>
         </nav>
         <div className="navbar-actions">
-          <button className="icon-button" aria-label="Logs only / hide navigation (F11)" title="Logs only / hide navigation (F11)" onClick={() => setLogsOnly(true)}><Monitor size={18} /></button>
           <button className="nav-open" onClick={pick} disabled={busy}><FolderOpen size={16} /> Open file</button>
           <button className="icon-button" aria-label="New window" title="New window (Ctrl+N)" onClick={newWindow}><AppWindow size={18} /></button>
           <button className="icon-button" aria-label="Appearance and settings" onClick={() => setDialog('settings')}><Settings2 size={18} /></button>
           <button className="icon-button" aria-label={`Theme: ${theme}. Switch theme`} onClick={() => setTheme(theme === 'dark' ? 'light' : theme === 'light' ? 'system' : 'dark')}>{theme === 'system' ? <Monitor size={18} /> : theme === 'dark' ? <Moon size={18} /> : <Sun size={18} />}</button>
-          <button className="login-button" onClick={() => setDialog('login')}><UserRound size={15} />Login<span className="small-badge">COMPANY TAGS</span></button>
+          <button className="icon-button" aria-label="Logs only / hide navigation (F11)" title="Logs only / hide navigation (F11)" onClick={() => setLogsOnly(true)}><X size={18} /></button>
+          {companyFeaturesEnabled(import.meta.env.VITE_ENABLE_COMPANY_TAGS) && <button className="login-button" onClick={() => setDialog('login')}><UserRound size={15} />Login<span className="small-badge">COMPANY TAGS</span></button>}
         </div>
       </header>}
       {tabsVisible && <div className="browser-tabs" role="tablist" aria-label="Workspace tabs">
@@ -269,12 +291,14 @@ export function App() {
       </div>}
       {error && <div className="error-banner" role="alert"><span>{error}</span><button className="icon-button" aria-label="Dismiss error" onClick={() => setError(null)}><X size={16} /></button></div>}
       <UpdateNotice result={startupUpdate} />
-      {tabs.map(tab => <section className="tab-panel" role="tabpanel" id={`panel-${tab.id}`} aria-labelledby={`tab-${tab.id}`} hidden={tab.id !== active} key={tab.id}>
+      {tabs.map(tab => <section className="tab-panel" role="tabpanel" id={`panel-${tab.id}`} aria-labelledby={`tab-${tab.id}`} hidden={tab.id !== active} key={tab.id}
+        onInputCapture={() => { if (tab.kind !== 'home' && tab.kind !== 'log') markToolUsed(tab.id) }}
+        onChangeCapture={() => { if (tab.kind !== 'home' && tab.kind !== 'log') markToolUsed(tab.id) }}>
         {tab.kind === 'log' ? <SplitWorkspace session={tab.session} second={tab.second} active={tab.id === active} onError={setError} onEmv={seed => newTab('emv', seed)} onSplit={() => void splitTab(tab.id)} onCloseSplit={() => {
           if (tab.second) void window.logdeck.closeFile(tab.second.id).then(result => { if (!result.ok) setError(result.error) }).catch(error => setError(String(error)))
-        }} /> : tab.kind === 'compare' ? <Suspense fallback={<div role="status">Loading local Compare editor...</div>}><Compare tabId={tab.id} active={tab.id === active} onStatus={compareStatus} onError={setError} /></Suspense> :
-          tab.kind === 'calculator' ? <ConversionTool /> : tab.kind === 'emv' ? <EmvTool seed={tab.seed} /> :
-          tab.kind === 'updates' ? <UpdatePage startupResult={startupUpdate} startupError={updateError} /> :
+        }} /> : tab.kind === 'compare' ? <Suspense fallback={<div role="status">Loading local Compare editor...</div>}><Compare tabId={tab.id} active={tab.id === active} onStatus={compareStatus} onUsed={markToolUsed} onError={setError} /></Suspense> :
+          tab.kind === 'calculator' ? <ConversionTool /> : tab.kind === 'emv' ? <EmvTool key={tab.seed ? `${tab.id}-seeded` : tab.id} seed={tab.seed} onUsed={() => markToolUsed(tab.id)} /> :
+          tab.kind === 'updates' ? <UpdatePage startupResult={startupUpdate} startupError={updateError} onUsed={() => markToolUsed(tab.id)} /> :
           <Home busy={busy} onOpen={pick} onDemo={() => void open(() => window.logdeck.openDemo())} onDrop={files => {
             if (files.length !== 1) { setError('Drop exactly one .log or .logcat file at a time.'); return }
             try {

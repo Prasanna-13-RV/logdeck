@@ -1,6 +1,8 @@
 module.exports = {
   appId: 'com.logdeck.desktop',
   productName: 'LogDeck',
+  compression: 'maximum',
+  electronLanguages: ['en-US'],
   directories: { output: 'release/build' },
   files: [
     'out/**/*', 'package.json',
@@ -18,12 +20,16 @@ module.exports = {
   npmRebuild: false,
   win: {
     icon: 'images/app-icon.ico',
-    target: [{ target: 'portable', arch: ['x64'] }],
+    target: [{ target: 'nsis', arch: ['x64'] }],
     artifactName: 'LogDeck-${version}-windows-x64.exe',
     executableName: 'LogDeck',
     signAndEditExecutable: true
   },
-  // In pinned builder 26.18, true omits UNPACK_DIR_NAME and uses a unique $PLUGINSDIR per launch.
-  portable: { requestExecutionLevel: 'user', useZip: true, unpackDirName: true },
+  // The custom NSIS entry point is a portable launcher, not an installer.
+  nsis: {
+    script: 'scripts/portable-launcher.nsi',
+    differentialPackage: false,
+    packElevateHelper: false
+  },
   publish: null
 }

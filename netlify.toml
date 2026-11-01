@@ -6,6 +6,7 @@
 [build.environment]
   NODE_VERSION = "22.22.0"
   ELECTRON_SKIP_BINARY_DOWNLOAD = "1"
+  VITE_ENABLE_COMPANY_TAGS = "false"
 
 [functions]
   node_bundler = "esbuild"
@@ -28,6 +29,11 @@
     Referrer-Policy = "no-referrer"
     X-Frame-Options = "DENY"
     Content-Security-Policy = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'"
+
+[[headers]]
+  for = "/favicon.*"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
 
 [[headers]]
   for = "/index.html"

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type { CacheInfo } from '../../../../shared/contracts'
 import { defaultColumns, usePreference, validColumns, validDisplay, type ColumnId } from '../preferences'
 import { CompanyTagSettings } from './CompanyTagSettings'
+import { companyFeaturesEnabled } from '../../../../shared/features'
 import { WindowsIntegrationSettings } from './WindowsIntegrationSettings'
 
 export function LocalSettings({ onError }: { onError: (message: string) => void }) {
@@ -28,7 +29,7 @@ export function LocalSettings({ onError }: { onError: (message: string) => void 
     saveColumns(next)
   }
   return <section className="local-settings">
-    <CompanyTagSettings />
+    {companyFeaturesEnabled(import.meta.env.VITE_ENABLE_COMPANY_TAGS) && <CompanyTagSettings />}
     <WindowsIntegrationSettings onError={onError} />
     <h3>Viewer display</h3>
     <label>Log font size <input type="range" min={10} max={18} aria-label="Log font size" value={settings.fontSize} onChange={event => save({ ...settings, fontSize: Number(event.target.value) })} /> {settings.fontSize}px</label>

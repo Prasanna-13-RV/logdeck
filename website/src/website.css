@@ -3,6 +3,8 @@
 .website a:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
 .website .navbar { position: sticky; top: 0; }
 .website .brand { display: inline-flex; align-items: center; color: var(--text); }
+.website .page-brand-logo { border-radius: 16px; }
+.website .footer-brand img { width: 36px; height: 36px; }
 .website .navbar nav a { color: var(--muted); font-size: 13px; font-weight: 600; padding: 10px 0; }
 .website .navbar nav a[aria-current=page] { color: var(--accent); border-bottom: 2px solid var(--accent); }
 .website a.primary-button { display: inline-flex; align-items: center; justify-content: center; gap: 10px; color: var(--accent-ink); }

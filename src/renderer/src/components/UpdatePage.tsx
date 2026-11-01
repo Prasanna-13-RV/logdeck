@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { ArrowDownToLine, CheckCircle2, ExternalLink, RefreshCw, ShieldCheck } from 'lucide-react'
 import type { UpdateCheckResult, UpdatePageInfo } from '../../../../shared/releases'
-import brandMark from '../../../../images/brand-mark.png'
+import brandMark from '../../../../images/logdeck.png'
 
-export function UpdatePage({ startupResult, startupError = '' }: { startupResult?: UpdateCheckResult | null; startupError?: string }) {
+export function UpdatePage({ startupResult, startupError = '', onUsed }: { startupResult?: UpdateCheckResult | null; startupError?: string; onUsed?: () => void }) {
   const [info, setInfo] = useState<UpdatePageInfo | null>(null)
   const [result, setResult] = useState<UpdateCheckResult | null>(startupResult ?? null)
   const [error, setError] = useState('')
@@ -22,6 +22,7 @@ export function UpdatePage({ startupResult, startupError = '' }: { startupResult
   }, [])
 
   async function check() {
+    onUsed?.()
     manualCheckStarted.current = true
     setBusy(true); setError(''); setResult(null)
     try {
@@ -33,6 +34,7 @@ export function UpdatePage({ startupResult, startupError = '' }: { startupResult
   }
 
   async function openDownload() {
+    onUsed?.()
     setError('')
     try {
       const response = await window.logdeck.openDownloadPage()
@@ -60,7 +62,7 @@ export function UpdatePage({ startupResult, startupError = '' }: { startupResult
       {error && <p className="update-error" role="alert">{error}</p>}
       <div className="update-actions">
         <button className="primary-button" disabled={!info?.configured || busy} onClick={() => void check()}><RefreshCw size={15} className={busy ? 'update-spinning' : ''} />{busy ? 'Checking...' : 'Check for updates'}</button>
-        <button className="secondary-button" disabled={!(info?.downloadConfigured ?? info?.configured)} onClick={() => void openDownload()}><ExternalLink size={15} />Official download page</button>
+        <button className="secondary-button" onClick={() => void openDownload()}><ExternalLink size={15} />Official download page</button>
       </div>
       {result?.releaseNotes && <section className="release-notes" aria-label="Release notes">
         <div className="eyebrow">RELEASE NOTES · {result.latestVersion}</div>

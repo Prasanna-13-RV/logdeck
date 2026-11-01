@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
+import { createRequire } from 'node:module'
+import { readFile } from 'node:fs/promises'
 import { nextVersion, releaseLinks, releaseOptions, waitForPortablePage } from '../../scripts/releaseHelpers'
 import { windowsIntegrationScript } from '../../shared/windowsIntegration'
 import { githubReleaseManifest, latestGithubRelease } from '../../shared/githubRelease'
@@ -18,6 +20,27 @@ const published = {
 }
 
 describe('portable distribution preparation', () => {
+  it('wires releases to the compressed no-installer launcher rather than the default NSIS installer', async () => {
+    const config = createRequire(import.meta.url)('../../electron-builder.config.cjs')
+    expect(config.electronLanguages).toEqual(['en-US'])
+    expect(config.compression).toBe('maximum')
+    expect(config.win.target).toEqual([{ target: 'nsis', arch: ['x64'] }])
+    expect(config.nsis).toEqual({
+      script: 'scripts/portable-launcher.nsi', differentialPackage: false, packElevateHelper: false
+    })
+    const release = await readFile('scripts\\release.mts', 'utf8')
+    expect(release).toContain("'--win', 'nsis'")
+    const launcher = await readFile(config.nsis.script, 'utf8')
+    expect(launcher).toContain('RequestExecutionLevel user')
+    expect(launcher).toContain('${VERSION}-$1')
+    expect(launcher).toContain('StrCmp $1 "${APP_64_HASH}" 0 cacheFailed')
+    expect(launcher).not.toMatch(/WriteReg|CreateShortCut|WriteUninstaller/)
+    expect(launcher.indexOf('ReleaseMutex')).toBeLessThan(launcher.indexOf('CreateProcessW'))
+    expect(launcher).toContain('Page instfiles "" showStartup')
+    expect(launcher).toContain('IfFileExists "$readyFile" windowReady')
+    expect(launcher).toContain('HideWindow')
+  })
+
   it('waits for a navigated Electron renderer rather than just the browser port', async () => {
     const request = vi.fn<typeof fetch>()
       .mockResolvedValueOnce(Response.json([]))

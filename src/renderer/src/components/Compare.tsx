@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { TextDocument } from '../../../../shared/contracts'
 import { validateText } from '../../../../shared/text'
-import { wordDifference, type Difference } from '../tools/diff'
+import { type Difference } from '../tools/diff'
 import { EditorView } from '@codemirror/view'
 import CompareEditor from './CompareEditor'
 
@@ -19,7 +19,7 @@ function history(values: string[], text: string) {
   return next
 }
 
-export default function Compare({ tabId, active, onStatus, onError }: { tabId: string; active: boolean; onStatus: (id: string, dirty: boolean, busy: boolean) => void; onError: (message: string) => void }) {
+export default function Compare({ tabId, active, onStatus, onUsed, onError }: { tabId: string; active: boolean; onStatus: (id: string, dirty: boolean, busy: boolean) => void; onUsed: (id: string) => void; onError: (message: string) => void }) {
   const [panes, setPanes] = useState<[Pane, Pane]>([blank(), blank()])
   const panesRef = useRef(panes)
   panesRef.current = panes
@@ -28,6 +28,7 @@ export default function Compare({ tabId, active, onStatus, onError }: { tabId: s
   const [differences, setDifferences] = useState<Difference[]>([])
   const [current, setCurrent] = useState(0)
   const [status, setStatus] = useState('Waiting')
+  const [coarse, setCoarse] = useState(false)
   const [busy, setBusy] = useState(false)
   const busyRef = useRef(false)
   busyRef.current = busy
@@ -35,6 +36,21 @@ export default function Compare({ tabId, active, onStatus, onError }: { tabId: s
   const worker = useRef<Worker | null>(null)
   const comparisonGeneration = useRef(0)
   const editors = [useRef<EditorView>(null), useRef<EditorView>(null)]
+  const synchronizedScroll = useRef<{ index: number; top: number; left: number } | null>(null)
+  function syncScroll(index: number, view: EditorView) {
+    const source = view.scrollDOM
+    const expected = synchronizedScroll.current
+    if (expected?.index === index && Math.abs(source.scrollTop - expected.top) < 1 && Math.abs(source.scrollLeft - expected.left) < 1) {
+      synchronizedScroll.current = null
+      return
+    }
+    const target = editors[1 - index].current?.scrollDOM
+    if (!target) return
+    const top = Math.min(source.scrollTop, Math.max(0, target.scrollHeight - target.clientHeight))
+    synchronizedScroll.current = { index: 1 - index, top, left: Math.min(source.scrollLeft, Math.max(0, target.scrollWidth - target.clientWidth)) }
+    target.scrollTop = top
+    target.scrollLeft = synchronizedScroll.current.left
+  }
   const [changed, setChanged] = useState(false)
   const hasChanges = panes.some(dirty)
   useEffect(() => { onStatus(tabId, hasChanges, busy) }, [tabId, hasChanges, busy, onStatus])
@@ -51,6 +67,7 @@ export default function Compare({ tabId, active, onStatus, onError }: { tabId: s
     const generation = ++comparisonGeneration.current
     worker.current?.terminate()
     setDifferences([])
+    setCoarse(false)
     setCurrent(0)
     setStatus(active ? 'Comparing...' : 'Paused while tab is inactive')
     if (!active) return
@@ -66,7 +83,7 @@ export default function Compare({ tabId, active, onStatus, onError }: { tabId: s
         clearTimeout(timeout)
         job.terminate()
         worker.current = null
-        if (event.data.ok) { setDifferences(event.data.differences); setStatus('Complete') }
+        if (event.data.ok) { setDifferences(event.data.differences); setCoarse(Boolean(event.data.coarse)); setStatus('Complete') }
         else setStatus(`Diff failed: ${String(event.data.error)}`)
       }
       job.onerror = () => {
@@ -113,6 +130,7 @@ export default function Compare({ tabId, active, onStatus, onError }: { tabId: s
         }
       }
       const document = result.value
+      onUsed(tabId)
       update(index, () => ({ ...blank(), text: document.text, saved: document.text, newline: document.newline, savedNewline: document.newline, bom: document.bom, savedBom: document.bom, document }))
     } catch (error) { onError(String(error)) }
     finally { setBusy(false) }
@@ -143,19 +161,17 @@ export default function Compare({ tabId, active, onStatus, onError }: { tabId: s
     })
   }
   const selected = differences[current]
-  const chunks = useMemo(() => selected ? [panes[0].text.split('\n').slice(selected.aStart, selected.aEnd).join('\n'), panes[1].text.split('\n').slice(selected.bStart, selected.bEnd).join('\n')] : ['', ''], [selected, panes[0].text, panes[1].text])
-  const words = useMemo(() => wordDifference(chunks[0], chunks[1]), [chunks[0], chunks[1]])
   function navigate(index: number) {
     if (!differences.length) return
     const next = (index + differences.length) % differences.length
     setCurrent(next)
     const difference = differences[next]
-    ;[difference.aStart, difference.bStart].forEach((line, pane) => {
-      const editor = editors[pane].current
-      if (!editor) return
-      const target = editor.state.doc.line(Math.min(line + 1, editor.state.doc.lines))
-      editor.dispatch({ selection: { anchor: target.from, head: target.to }, effects: EditorView.scrollIntoView(target.from, { y: 'center' }) })
-    })
+    const pane = difference.aEnd > difference.aStart ? 0 : 1
+    const editor = editors[pane].current
+    if (!editor) return
+    const line = pane === 0 ? difference.aStart : difference.bStart
+    const target = editor.state.doc.line(Math.min(line + 1, editor.state.doc.lines))
+    editor.dispatch({ effects: EditorView.scrollIntoView(target.from, { y: 'center', x: 'nearest' }) })
   }
   function copyChange(to: number) {
     if (!selected || status !== 'Complete') return
@@ -174,7 +190,7 @@ export default function Compare({ tabId, active, onStatus, onError }: { tabId: s
       <button className="secondary-button" onClick={() => setRevision(value => value + 1)}>Retry comparison</button>
       <button className="text-button" disabled={status !== 'Comparing...'} onClick={() => { comparisonGeneration.current++; worker.current?.terminate(); worker.current = null; setStatus('Comparison cancelled. Retry to compare again.') }}>Cancel comparison</button>
     </div>
-    <div className="compare-status" role="status">{status} · {differences.length} changed blocks {differences.length > 0 && `· ${current + 1} selected`}{changed && ' · Editing is local until Save'}</div>
+    <div className="compare-status" role="status">{status} · {differences.length} changed blocks {differences.length > 0 && `· ${current + 1} selected`}{coarse && ' · Coarse comparison: large changes grouped; all text is included'}{changed && ' · Editing is local until Save'}</div>
     <div className="compare-editors">{panes.map((pane, index) => <section className="compare-pane" key={index} aria-label={`${index === 0 ? 'Left' : 'Right'} document`}>
       <div className="compare-pane-toolbar"><strong>{pane.document?.name ?? 'Untitled'}{dirty(pane) ? ' *' : ''}</strong>
         <button className="text-button" disabled={busy} onClick={() => void openPane(index)}>Open {index === 0 ? 'left' : 'right'}</button>
@@ -183,9 +199,9 @@ export default function Compare({ tabId, active, onStatus, onError }: { tabId: s
         <button className="text-button" disabled={busy || !pane.undo.length} onClick={() => travel(index, false)}>Undo {index === 0 ? 'left' : 'right'}</button>
         <button className="text-button" disabled={busy || !pane.redo.length} onClick={() => travel(index, true)}>Redo {index === 0 ? 'left' : 'right'}</button>
       </div>
-      <CompareEditor editorRef={editors[index]} label={`${index === 0 ? 'Left' : 'Right'} comparison text`} text={pane.text} newline={pane.newline} bom={pane.bom}
-        differences={differences.map(change => index === 0 ? { start: change.aStart, end: change.aEnd } : { start: change.bStart, end: change.bEnd })}
-        readOnly={busy} onChange={text => edit(index, text)} onHistory={redo => travel(index, redo)} onError={onError} />
+      <CompareEditor editorRef={editors[index]} label={`${index === 0 ? 'Left' : 'Right'} comparison text`} text={pane.text} otherText={panes[1 - index].text} side={index === 0 ? 'left' : 'right'} newline={pane.newline} bom={pane.bom}
+        differences={differences.map(change => index === 0 ? { start: change.aStart, end: change.aEnd, otherStart: change.bStart, otherEnd: change.bEnd } : { start: change.bStart, end: change.bEnd, otherStart: change.aStart, otherEnd: change.aEnd })}
+        selectedDifference={current} readOnly={busy} onScroll={view => syncScroll(index, view)} onChange={text => edit(index, text)} onHistory={redo => travel(index, redo)} onError={onError} />
       <div className="compare-format"><span>{pane.text.split('\n').length.toLocaleString()} lines</span>
         <select aria-label={`${index === 0 ? 'Left' : 'Right'} newline`} value={pane.newline} onChange={event => {
           const newline = event.target.value as '\n' | '\r\n'
@@ -202,9 +218,6 @@ export default function Compare({ tabId, active, onStatus, onError }: { tabId: s
       <button className="secondary-button" disabled={!selected || busy || status !== 'Complete'} onClick={() => copyChange(1)}>Copy change left to right</button>
       <button className="secondary-button" disabled={!selected || busy || status !== 'Complete'} onClick={() => copyChange(0)}>Copy change right to left</button>
     </div>
-    {selected && <div className="difference-preview" aria-label="Selected difference">
-      <p>Left {selected.aStart === selected.aEnd ? `insertion at line ${selected.aStart + 1}` : `lines ${selected.aStart + 1}-${selected.aEnd}`} / Right {selected.bStart === selected.bEnd ? `insertion at line ${selected.bStart + 1}` : `lines ${selected.bStart + 1}-${selected.bEnd}`} · {words ? 'Word changes highlighted' : 'Word refinement skipped: block exceeds 4,000 characters / 200 tokens per side'}</p>
-      <div className="tool-columns">{([0, 1] as const).map(index => <pre key={index}>{words ? words[index === 0 ? 'left' : 'right'].map((part, i) => part.changed ? <mark key={i}>{part.text}</mark> : part.text) : chunks[index].slice(0, 4000) + (chunks[index].length > 4000 ? '\n[Preview clipped; full text remains in editor]' : '')}</pre>)}</div>
-    </div>}
+    {selected && <p aria-label="Selected difference">Left {selected.aStart === selected.aEnd ? `insertion at line ${selected.aStart + 1}` : `lines ${selected.aStart + 1}-${selected.aEnd}`} / Right {selected.bStart === selected.bEnd ? `insertion at line ${selected.bStart + 1}` : `lines ${selected.bStart + 1}-${selected.bEnd}`} · Changes highlighted in the editors</p>}
   </main>
 }

@@ -64,7 +64,7 @@ try {
   }
   run('npm', ['test'])
   run('npm', ['run', 'build'])
-  run('builder', ['--config', 'electron-builder.config.cjs', '--win', 'portable', '--x64', '--publish', 'never', `--config.directories.output=${output}`])
+  run('builder', ['--config', 'electron-builder.config.cjs', '--win', 'nsis', '--x64', '--publish', 'never', `--config.directories.output=${output}`])
   run('node', ['scripts/verify-package.mts', output, version])
   const hash = createHash('sha256')
   for await (const chunk of createReadStream(join(output, links.filename))) hash.update(chunk)

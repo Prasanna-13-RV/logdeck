@@ -1,5 +1,5 @@
 import { _electron as electron, chromium, type Page } from '@playwright/test'
-import { mkdtemp, writeFile, readFile, rm, stat } from 'node:fs/promises'
+import { mkdtemp, writeFile, readFile, readdir, rm, stat } from 'node:fs/promises'
 import { setTimeout as delay } from 'node:timers/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -143,6 +143,24 @@ ConvertTo-Json -InputObject $ids -Compress
   return ids
 }
 
+async function verifyStartupWindow(pid: number, visible: boolean) {
+  assert(Number.isSafeInteger(pid) && pid > 0, 'Startup window must belong to the test launcher.')
+  const script = `
+$ErrorActionPreference = 'Stop'
+$end = [DateTime]::UtcNow.AddSeconds(30)
+do {
+  $process = Get-Process -Id ${pid}
+  $shown = $process.MainWindowHandle -ne [IntPtr]::Zero
+  if ($shown -eq $${visible ? 'true' : 'false'}) {
+    ${visible ? `if ($process.MainWindowTitle -ne 'LogDeck is starting') { throw "Unexpected startup title: $($process.MainWindowTitle)" }` : ''}
+    exit 0
+  }
+  Start-Sleep -Milliseconds 50
+} while ([DateTime]::UtcNow -lt $end)
+throw 'Startup window did not become ${visible ? 'visible' : 'hidden'}.'`
+  await promisify(execFile)('powershell.exe', ['-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')], { timeout: 35_000 })
+}
+
 // Both the extracted runtime and the self-extracting portable entry point must work.
 try {
   const extracted = join(directory, 'win-unpacked', 'LogDeck.exe')
@@ -169,48 +187,79 @@ try {
     } finally { await desktop.close() }
   }
   const portable = join(directory, filename)
-  const profile = join(userData, 'portable-profile')
-  env.LOGDECK_TEST_USER_DATA = profile
-  const child = spawn(portable, ['--remote-debugging-port=0', '--remote-debugging-address=127.0.0.1', fixture], { env, stdio: 'ignore' })
-  child.on('error', error => console.error('Portable launch failed:', error))
-  let secondPortable: ReturnType<typeof spawn> | undefined
-  let browserPids: number[] = []
-  try {
-    // The NSIS launcher does not relay Electron inspector stderr; attach to its actual browser.
+  const cacheRoot = join(userData, 'portable-runtime')
+  env.LOGDECK_TEST_PORTABLE_CACHE_ROOT = cacheRoot
+  let cacheSnapshot: { name: string; markerTime: number; executableTime: number } | undefined
+  async function verifyPortableLaunch(mode: 'cold' | 'warm') {
+    const profile = join(userData, `portable-${mode}-profile`)
+    env.LOGDECK_TEST_USER_DATA = profile
     const started = Date.now()
-    const port = await waitForDebugPort(profile, child)
-    browserPids = await portableMainPids(profile)
-    const endpoint = `http://127.0.0.1:${port}`
-    await waitForPortablePage(endpoint, child)
-    const browser = await chromium.connectOverCDP(endpoint)
+    const child = spawn(portable, ['--remote-debugging-port=0', '--remote-debugging-address=127.0.0.1'], { env, stdio: 'ignore' })
+    child.on('error', error => console.error('Portable launch failed:', error))
+    let secondPortable: ReturnType<typeof spawn> | undefined
+    let browserPids: number[] = []
     try {
-      const context = browser.contexts()[0]
-      const page = context.pages()[0]
-      if (!page) throw new Error('Playwright could not attach to the loaded portable window.')
-      await verify(page, portable)
-      console.log(`Portable startup and indexed read: ${((Date.now() - started) / 1000).toFixed(1)}s`)
-      const newPage = context.waitForEvent('page', { timeout: 120_000 })
-      const registeredExe = await associationExecutable(portable)
-      secondPortable = spawn(registeredExe, [secondFixture], { env, stdio: 'ignore' })
-      console.log(`Testing portable second-instance forwarding (launcher ${secondPortable.pid}).`)
-      secondPortable.on('error', error => console.error('Portable second-instance launch failed:', error))
-      const forwarded = await newPage
-      await forwarded.waitForFunction(async () => {
-        const result = await window.logdeck.getSessions()
-        return result.ok && result.value.some(file => file.name === 'second log 世界.logcat' && file.status === 'ready')
-      })
-      console.log(`Portable EXE PASS: ${portable}`)
-    } finally {
-      for (const page of browser.contexts().flatMap(context => context.pages())) {
-        void page.evaluate(() => window.close()).catch(error => {
-          if (!page.isClosed() && browser.isConnected()) console.error('Test window close failed:', error)
+      assert(child.pid, 'Portable launcher must start.')
+      await verifyStartupWindow(child.pid, true)
+      console.log(`Portable ${mode} loading window visible: ${((Date.now() - started) / 1000).toFixed(1)}s`)
+      // The NSIS launcher does not relay Electron inspector stderr; attach to its actual browser.
+      const port = await waitForDebugPort(profile, child)
+      const endpoint = `http://127.0.0.1:${port}`
+      await waitForPortablePage(endpoint, child)
+      browserPids = await portableMainPids(profile)
+      const browser = await chromium.connectOverCDP(endpoint)
+      try {
+        const context = browser.contexts()[0]
+        const page = context.pages()[0]
+        if (!page) throw new Error('Playwright could not attach to the loaded portable window.')
+        await page.waitForFunction(() => Boolean(window.logdeck))
+        console.log(`Portable ${mode} window ready (no log): ${((Date.now() - started) / 1000).toFixed(1)}s`)
+        await verifyStartupWindow(child.pid, false)
+        const caches = await readdir(cacheRoot)
+        assert.equal(caches.length, 1, 'Portable launches must reuse one complete payload cache.')
+        assert.match(caches[0], new RegExp(`^${version.replaceAll('.', '\\.')}\\-[A-F0-9]{32}$`), 'Cache must be keyed by version and payload hash.')
+        const snapshot = {
+          name: caches[0],
+          markerTime: (await stat(join(cacheRoot, caches[0], '.ready'))).mtimeMs,
+          executableTime: (await stat(join(cacheRoot, caches[0], 'LogDeck.exe'))).mtimeMs
+        }
+        const payloadHash = await readFile(join(cacheRoot, caches[0], '.ready'), 'utf8')
+        assert.match(payloadHash, /^[A-F0-9]{128}$/)
+        assert.equal(payloadHash.slice(0, 32), caches[0].slice(version.length + 1))
+        if (cacheSnapshot) assert.deepEqual(snapshot, cacheSnapshot, 'Warm launches must not re-extract or rewrite the runtime.')
+        else cacheSnapshot = snapshot
+        const opened = await page.evaluate(path => window.logdeck.openDroppedFile(path), fixture)
+        assert(opened.ok, `Packaged file open failed: ${opened.ok ? '' : opened.error}`)
+        await verify(page, portable)
+        console.log(`Portable ${mode} startup and indexed read: ${((Date.now() - started) / 1000).toFixed(1)}s`)
+        const newPage = context.waitForEvent('page', { timeout: 120_000 })
+        const registeredExe = await associationExecutable(portable)
+        secondPortable = spawn(registeredExe, [secondFixture], { env, stdio: 'ignore' })
+        console.log(`Testing portable second-instance forwarding (launcher ${secondPortable.pid}).`)
+        secondPortable.on('error', error => console.error('Portable second-instance launch failed:', error))
+        const forwarded = await newPage
+        await forwarded.waitForFunction(async () => {
+          const result = await window.logdeck.getSessions()
+          return result.ok && result.value.some(file => file.name === 'second log 世界.logcat' && file.status === 'ready')
         })
+        console.log(`Portable ${mode} EXE PASS: ${portable}`)
+      } finally {
+        for (const page of browser.contexts().flatMap(context => context.pages())) {
+          void page.evaluate(() => window.close()).catch(error => {
+            if (!page.isClosed() && browser.isConnected()) console.error('Test window close failed:', error)
+          })
+        }
+        await cleanLauncher(child, browserPids)
+        await browser.close()
       }
-      await cleanLauncher(child, browserPids)
-      await browser.close()
+    } catch (error) {
+      console.error(`Portable ${mode} verification failed:`, error)
+      throw error
+    } finally {
+      if (secondPortable) await cleanLauncher(secondPortable)
+      await cleanLauncher(child)
     }
-  } finally {
-    if (secondPortable) await cleanLauncher(secondPortable)
-    await cleanLauncher(child)
   }
+  await verifyPortableLaunch('cold')
+  await verifyPortableLaunch('warm')
 } finally { await rm(userData, { recursive: true, force: true, maxRetries: 5, retryDelay: 500 }) }

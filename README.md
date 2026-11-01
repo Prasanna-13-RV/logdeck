@@ -62,7 +62,8 @@ Electron and requires network access; normal local file viewing does not.
 - Matching public website: Home, Features, Download and an authenticated company-admin publishing page.
 - Optional Firebase email/password company sign-in, validated immutable company tag packs,
   manual Settings downloads, offline caching and separate global/company definitions.
-  Cloud features remain disabled until you configure your Firebase project.
+  Company features (including cached JSON) default off. Set
+  `VITE_ENABLE_COMPANY_TAGS=true` and configure Firebase to opt in on both builds.
 - Desktop checks the configured public GitHub `version.json` once per app launch
   and shows a nonblocking newer-version notice. The Updates page also supports manual checks. Downloads open
   manually; the app never downloads or installs updates automatically.
@@ -150,6 +151,14 @@ Windows **Open with > Choose another app** and set it as the default for that
 extension. Re-enable registration after moving or upgrading the portable EXE so
 Windows uses the new path. Registration refreshes the shell's association cache;
 Explorer may also need a refresh before the icon changes.
+After changing `images/logdeck.png`, run
+`powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\prepare-branding.ps1`
+to regenerate the matching multi-size `app-icon.ico` and `favicon.ico`, then rebuild
+the website and Windows release. Task Manager uses the EXE's embedded icon, not
+the website logo; existing EXEs cannot pick up new image files. The website serves
+32px PNG and multi-size ICO favicons from its public root, with a revision query
+on the HTML links and revalidation headers. Update the favicon revision when
+replacing the artwork to refresh browsers that cache tab icons.
 
 The release smoke test checks the embedded EXE icon/product identity, native
 window title, and opening a `.logcat` file using the registered command for both
@@ -158,6 +167,9 @@ subtree and remove it afterwards; they do not change your real file defaults.
 The portable smoke test waits for the loaded renderer in DevTools before attaching
 Playwright. The debugging port alone is not a window-readiness signal; attaching
 too early can leave Playwright with no pages even though the app opens normally.
+It also checks cold/warm startup, verifies the native loading window appears and
+then hides when the viewer is shown, and checks the cached runtime is not rewritten
+on a repeat launch.
 
 ### Portable Windows releases
 
@@ -189,6 +201,24 @@ See the exact publishing and Netlify setup steps in
 [the distribution guide](docs/Firebase-and-website-setup.md#6-portable-release-preparation-and-github-publication).
 
 Users save the EXE in a permanent folder and run it without a setup wizard.
+The EXE contains a compressed Electron runtime and English Chromium locale files.
+Its first launch extracts the runtime to `%LOCALAPPDATA%\LogDeck\portable`; later
+launches reuse it rather than extracting and deleting it every time. The cache is
+keyed by version and payload hash, so replacing the EXE with a rebuilt release
+uses a separate runtime. No administrator rights, shortcuts or installer registry
+entries are required. After closing all LogDeck windows, old runtime cache folders
+can be deleted to reclaim space; deleting the current cache causes re-extraction
+on the next launch. Logs and settings are stored separately from this cache.
+The native launcher shows preparation/loading status while the runtime starts,
+then hides once the viewer is visible. Command-line logs begin indexing after the
+viewer loads instead of holding back the entire window. Like electron-builder's
+standard portable launcher, it does not rescan the entire EXE's NSIS CRC on every
+launch; extraction still checks the archive and releases include SHA-256 checksums.
+The optimized 0.1.1 build measured 100.8 MiB (previously 154.7 MiB). On the
+development machine, the no-log smoke test observed loading feedback in 11.8
+seconds with a fresh cache and 1.5 seconds on a repeat launch. The viewer was ready
+in 50.0 and 5.6 seconds respectively. First-launch extraction and Windows scanning
+can still delay even the loading window; these are not cross-machine guarantees.
 **Settings > Open with LogDeck** optionally registers `.log` and `.logcat` for
 that Windows account, after confirmation, without administrator rights or
 changing defaults. Windows Default apps controls the default selection.
@@ -352,24 +382,41 @@ blocked while that view exports so its result generation remains stable.
 
 ## Independent text Compare
 
+Tool navigation reuses an existing untouched Compare, EMV, Hex / ASCII or Updates
+tab instead of making duplicates. After entering data, loading a Compare document,
+decoding/editing EMV data or manually using Updates, that tab is retained and a new
+workspace can be opened. Usage remains tracked even after saving or clearing data.
+An untouched spare is reused before checking tab limits. New/home and log tabs
+keep their existing behavior; at most two Compare workspaces can be open.
+
 Compare opens a separate tool tab; the virtualized CodeMirror editor is loaded
 only on demand. Each side accepts valid UTF-8, optionally BOM-prefixed, with LF
 or CRLF. Mixed newlines, standalone CR, invalid UTF-8, binary/NUL input and
 unpaired Unicode surrogates are rejected explicitly. Load/paste/edit/copy enforce
 both **10,000,000 encoded bytes and 100,000 lines per side** without truncation.
 
-- Editable line-numbered panes highlight changed lines; the selected change has
-  an original/modified word preview. Previous/next navigates both editors.
+- Editable line-numbered panes highlight changed lines and words directly in
+  the two editors, with no duplicate preview boxes. Previous/next navigates both.
+- Compare fills the available tab height and resizes with the window. Focused
+  editors show a blinking caret and visible text selections; compact windows
+  retain scrollable controls and stacked panes.
+- Visual blank rows opposite insertions/deletions align matching lines across
+  both panes without adding text, line numbers, or saved-file content.
+  Scrolling either pane synchronizes both axes. Previous/next gives the selected
+  block a stronger highlight, including its blank space on the other side.
 - Copy the selected block in either direction; Undo/Redo preserves up to 50
   snapshots / 20 MB of history per pane. These are bounded editing histories,
   not persistent recovery files.
 - Ignore-case/whitespace toggles affect comparison only, not saved text.
 - Diff runs in a disposable worker after a 250 ms debounce, with cancellation,
   stale-generation checks, a five-second watchdog and an internal work budget.
-  Worst-case input may stop with an explicit timeout/budget error.
-- Word refinement is limited to 4,000 combined characters / 200 tokens per side
-  in the selected block. Larger blocks retain line navigation and explicitly
-  label skipped word refinement.
+  Large changed regions use rare matching lines as alignment anchors, then
+  compare the gaps separately. Highly repetitive regions without rare anchors
+  use a labeled monotonic alignment, preserving matching lines and copy operations.
+  A worker that stalls beyond the watchdog still reports an explicit timeout.
+- Word highlighting is computed only for visible paired lines, bounded to 4,000
+  combined characters / 200 tokens per line. Longer lines highlight the changed
+  span between the common prefix and suffix instead; no document-wide word limit.
 - Explicit Save/Save As preserves the selected BOM/newline format. External
   changes require Cancel / Save As / Overwrite. Writes use a temporary file,
   flush, destination recheck and replacement; errors retain the dirty buffer.
@@ -493,7 +540,8 @@ regex occurrence highlighting, automatic
 cache eviction and always-full cache verification remain unfinished. Live ADB
 capture, Google OAuth, Company AI and log/preference cloud sync are deferred integrations.
 Email/password company-tag authentication is implemented as an optional integration,
-but requires your Firebase project configuration and deployed rules.
+but requires `VITE_ENABLE_COMPANY_TAGS=true`, your Firebase project configuration
+and deployed rules.
 
 There is no setup wizard or automatic download/installation. Optional per-user
 Windows Open With registration is available in Settings; signing requires your

@@ -20,13 +20,7 @@ function Resize-Logo($sourcePath, $width, $height) {
   } finally { $source.Dispose() }
 }
 
-$source = Join-Path $root 'images\logo\logdeck_transparent_bg.png'
-$mark = Resize-Logo $source 256 256
-try { $mark.Save((Join-Path $root 'images\brand-mark.png'), [Drawing.Imaging.ImageFormat]::Png) }
-finally { $mark.Dispose() }
-$portrait = Resize-Logo (Join-Path $root 'images\logo\logdeck_transparent_bg_vertical.png') 240 300
-try { $portrait.Save((Join-Path $root 'images\brand-portrait.png'), [Drawing.Imaging.ImageFormat]::Png) }
-finally { $portrait.Dispose() }
+$source = Join-Path $root 'images\logdeck.png'
 
 $sizes = @(16, 24, 32, 48, 64, 128, 256)
 $payloads = @()
@@ -53,3 +47,8 @@ try {
   }
   foreach ($payload in $payloads) { $writer.Write([byte[]]$payload) }
 } finally { $writer.Dispose(); $output.Dispose() }
+Copy-Item -LiteralPath (Join-Path $root 'images\app-icon.ico') -Destination (Join-Path $root 'images\favicon.ico') -Force
+Copy-Item -LiteralPath (Join-Path $root 'images\favicon.ico') -Destination (Join-Path $root 'website\public\favicon.ico') -Force
+$favicon = Resize-Logo $source 32 32
+try { $favicon.Save((Join-Path $root 'website\public\favicon.png'), [Drawing.Imaging.ImageFormat]::Png) }
+finally { $favicon.Dispose() }

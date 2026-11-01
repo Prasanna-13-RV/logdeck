@@ -2,8 +2,10 @@ import { useState } from 'react'
 import { firebaseConfig, FirebaseTags } from '../../shared/firebaseTags'
 import { companyId, parseTagPack, tagPackLimits, type CompanyTagPack } from '../../shared/companyTags'
 import { emvDefinition } from '../../shared/emvDictionary'
+import { companyFeaturesEnabled } from '../../shared/features'
 
 function configuration() {
+  if (!companyFeaturesEnabled(import.meta.env.VITE_ENABLE_COMPANY_TAGS)) return { config: null, error: 'Company features are disabled.' }
   try { return { config: firebaseConfig(import.meta.env.VITE_FIREBASE_API_KEY, import.meta.env.VITE_FIREBASE_PROJECT_ID), error: '' } }
   catch (error) { return { config: null, error: error instanceof Error ? error.message : String(error) } }
 }

@@ -6,7 +6,7 @@ import { randomUUID } from 'node:crypto'
 import { windowsIntegrationScript } from '../../shared/windowsIntegration'
 
 describe('Windows branding and associations', () => {
-  it('ships a padded 256px mark and Windows icons through 256px', async () => {
+  it('ships matching browser and Windows icons through 256px from the current logo', async () => {
     const icon = await readFile('images\\app-icon.ico')
     expect(icon.readUInt16LE(2)).toBe(1)
     const sizes = Array.from({ length: icon.readUInt16LE(4) }, (_, i) => {
@@ -18,8 +18,10 @@ describe('Windows branding and associations', () => {
       return size
     })
     expect(sizes).toEqual([16, 24, 32, 48, 64, 128, 256])
-    const mark = await readFile('images\\brand-mark.png')
-    expect([mark.readUInt32BE(16), mark.readUInt32BE(20)]).toEqual([256, 256])
+    expect(await readFile('images\\favicon.ico')).toEqual(icon)
+    const preparation = await readFile('scripts\\prepare-branding.ps1', 'utf8')
+    expect(preparation).toContain("'images\\logdeck.png'")
+    expect(preparation).not.toContain('images\\logo\\')
   })
 
   it.skipIf(process.platform !== 'win32')('registers, reads and removes commands/icons in isolated per-user registry keys without changing defaults', async () => {

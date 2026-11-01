@@ -27,15 +27,13 @@ test('real Electron foundation: themes, local files, cache, bounded ranges, isol
     const page = await desktop.firstWindow()
     const errors: string[] = []
     page.on('pageerror', error => errors.push(error.message))
-    await expect(page.getByRole('heading', { name: 'Less noise. More understanding.' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Your logs. One powerful deck.' })).toBeVisible()
     await expect(page.getByRole('button', { name: 'Browse files' })).toBeVisible()
     await page.screenshot({ path: 'test-results/home-initial.png', fullPage: true })
 
-    await page.getByRole('button', { name: /Login/ }).click()
-    await expect(page.getByRole('dialog')).toContainText('Firebase')
-    await expect(page.getByRole('dialog')).toContainText('Firebase is not configured')
-    await page.getByRole('button', { name: 'Got it' }).click()
+    await expect(page.getByRole('button', { name: /Login/ })).toHaveCount(0)
     await page.getByRole('button', { name: 'Appearance and settings' }).click()
+    await expect(page.getByRole('dialog').getByText('Company EMV tags', { exact: true })).toHaveCount(0)
     await page.getByRole('button', { name: 'Dark', exact: true }).click()
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
     await page.getByRole('button', { name: 'Got it' }).click()

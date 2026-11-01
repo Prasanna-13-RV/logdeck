@@ -30,6 +30,7 @@ jobs:
           CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CSC_KEY_PASSWORD }}
           VITE_FIREBASE_API_KEY: ${{ vars.VITE_FIREBASE_API_KEY }}
           VITE_FIREBASE_PROJECT_ID: ${{ vars.VITE_FIREBASE_PROJECT_ID }}
+          VITE_ENABLE_COMPANY_TAGS: ${{ vars.VITE_ENABLE_COMPANY_TAGS }}
       - name: Publish tested EXE, checksum and manifest together
         shell: pwsh
         env:

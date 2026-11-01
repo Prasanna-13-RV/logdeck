@@ -8,7 +8,7 @@ import { TextFiles } from './textFiles'
 import { CompanyTags } from './companyTags'
 import { changeWindowsIntegration, windowsIntegrationInfo } from './windowsIntegration'
 import { firebaseConfig } from '../../shared/firebaseTags'
-import { releaseConfiguration } from '../../shared/releases'
+import { officialWebsiteUrl } from '../../shared/features'
 import { checkGitHubVersion, startupGitHubVersionCheck, type GitHubVersionConfiguration } from '../../shared/githubVersion'
 import type { FindMatch, LogRow, Result, SessionInfo, SearchInfo, ExportInfo, CacheInfo } from '../../shared/contracts'
 
@@ -21,7 +21,7 @@ const rangeJobs = new Map<number, number>()
 const activeSessions = new Map<number, string>()
 let files: FileWorker
 let companyTags: CompanyTags
-declare const __LOGDECK_FIREBASE__: { apiKey: string; projectId: string }
+declare const __LOGDECK_FIREBASE__: { enabled: boolean; apiKey: string; projectId: string }
 declare const __LOGDECK_RELEASE__: { manifestUrl: string; websiteUrl: string }
 declare const __LOGDECK_VERSION__: GitHubVersionConfiguration
 
@@ -158,13 +158,22 @@ async function createWindow(initialPath?: string) {
     })
     if (response === 1) event.preventDefault()
   })
-  window.once('ready-to-show', () => window.show())
+  window.once('ready-to-show', () => {
+    window.show()
+    const readyFile = process.env.LOGDECK_STARTUP_READY_FILE
+    if (readyFile) {
+      void writeFile(readyFile, 'ready').catch(error => console.error('Could not dismiss startup window:', error))
+      delete process.env.LOGDECK_STARTUP_READY_FILE
+    }
+  })
   window.webContents.on('before-input-event', (event, input) => {
     if (input.control && input.key.toLowerCase() === 'n' && input.type === 'keyDown') {
       event.preventDefault()
       void createWindow().catch(error => dialog.showErrorBox('Could not create window', String(error)))
     }
   })
+  if (process.env.ELECTRON_RENDERER_URL) await window.loadURL(process.env.ELECTRON_RENDERER_URL)
+  else await window.loadFile(join(__dirname, '../renderer/index.html'))
   let openingError: string | undefined
   if (initialPath) {
     try {
@@ -173,8 +182,6 @@ async function createWindow(initialPath?: string) {
       openingError = String(error)
     }
   }
-  if (process.env.ELECTRON_RENDERER_URL) await window.loadURL(process.env.ELECTRON_RENDERER_URL)
-  else await window.loadFile(join(__dirname, '../renderer/index.html'))
   if (openingError) await dialog.showMessageBox(window, { type: 'error', message: openingError })
   return window
 }
@@ -193,14 +200,12 @@ function registerIpc() {
     })
     return result.response === 1 ? changeWindowsIntegration(action) : info
   })
-  const release = releaseConfiguration(__LOGDECK_RELEASE__.manifestUrl, __LOGDECK_RELEASE__.websiteUrl)
   const startupCheck = startupGitHubVersionCheck(__LOGDECK_VERSION__, app.getVersion())
   ipc('updates:startup', async () => startupCheck())
-  ipc('updates:info', async () => ({ configured: true, downloadConfigured: release !== null, currentVersion: app.getVersion() }))
+  ipc('updates:info', async () => ({ configured: true, downloadConfigured: true, currentVersion: app.getVersion() }))
   ipc('updates:check', async () => checkGitHubVersion(__LOGDECK_VERSION__, app.getVersion()))
   ipc('updates:open-download', async () => {
-    if (!release) throw new Error('The official LogDeck website is not configured.')
-    await shell.openExternal(new URL('/download', release.websiteUrl).href)
+    await shell.openExternal(officialWebsiteUrl)
   })
   ipc('company:status', async event => companyTags.status(event.sender.id))
   ipc('company:sign-in', async (event, value) => companyTags.signIn(event.sender.id, value))
@@ -400,8 +405,8 @@ else {
       }
     })
     companyTags = new CompanyTags(join(app.getPath('userData'), 'company-emv-tags.json'),
-      firebaseConfig(__LOGDECK_FIREBASE__.apiKey, __LOGDECK_FIREBASE__.projectId))
-    await companyTags.load()
+      __LOGDECK_FIREBASE__.enabled ? firebaseConfig(__LOGDECK_FIREBASE__.apiKey, __LOGDECK_FIREBASE__.projectId) : null)
+    if (__LOGDECK_FIREBASE__.enabled) await companyTags.load()
     await files.request('company-tags', '', { companyPack: companyTags.status(0).installed })
     registerIpc()
     const path = process.argv.find(value => ['.log', '.logcat'].includes(extname(value).toLowerCase()))

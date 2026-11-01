@@ -39,7 +39,7 @@ function TlvRows({ nodes, depth = 0, select }: { nodes: TlvNode[]; depth?: numbe
   </tbody>)}</>
 }
 
-export function EmvTool({ seed }: { seed?: EmvSeed }) {
+export function EmvTool({ seed, onUsed }: { seed?: EmvSeed; onUsed?: () => void }) {
   const [scheme, setScheme] = useState<Scheme>('visa')
   const [tag, setTag] = useState(seed?.tag ?? '95')
   const [input, setInput] = useState(seed?.value ?? defaultTagValue('95'))
@@ -60,6 +60,7 @@ export function EmvTool({ seed }: { seed?: EmvSeed }) {
     try {
       const hex = validateTagValue(loadedTag, value)
       if (hex.length !== original.length) throw new Error('Edits must preserve the original byte length. Decode a new baseline to use a different length.')
+      onUsed?.()
       setModified(hex); setHexDraft(hex); setError('')
       if (selectedNode) setEdits(previous => ({ ...previous, [selectedNode.valueOffset]: hex }))
     } catch (error) { setError(message(error)) }
@@ -67,6 +68,7 @@ export function EmvTool({ seed }: { seed?: EmvSeed }) {
   function loadTag(nextTag: string, value: string, node: TlvNode | null = null) {
     try {
       const hex = validateTagValue(nextTag, value)
+      onUsed?.()
       setLoadedTag(nextTag); setOriginal(hex); setModified(node ? edits[node.valueOffset] ?? hex : hex)
       setHexDraft(node ? edits[node.valueOffset] ?? hex : hex); setSelectedNode(node); setError('')
     } catch (error) { setError(message(error)) }

@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, writeFile, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
-test('offline cached company tags retain both sources without enabling unconfigured cloud', async () => {
+test('company pack cache follows the build-time opt-in flag', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'logdeck-company-ui-'))
   const profile = join(directory, 'profile')
   await mkdir(profile)
@@ -27,6 +27,19 @@ test('offline cached company tags retain both sources without enabling unconfigu
     const opened = await page.evaluate(path => window.logdeck.openDroppedFile(path), path)
     expect(opened.ok).toBe(true)
     const panel = page.locator('.tab-panel:not([hidden])')
+    if (process.env.VITE_ENABLE_COMPANY_TAGS !== 'true') {
+      await expect(panel.getByRole('button', { name: 'Inspect EMV tag 9F33', exact: true })).toBeVisible()
+      await expect(panel.getByRole('button', { name: 'Inspect EMV tag DF8101', exact: true })).toHaveCount(0)
+      const status = await page.evaluate(() => window.logdeck.companyTagStatus())
+      expect(status.ok && status.value.installed).toBeNull()
+      expect(status.ok && status.value.configured).toBe(false)
+      await expect(page.getByRole('button', { name: /Login/ })).toHaveCount(0)
+      const signIn = await page.evaluate(() => window.logdeck.companySignIn('test@example.invalid', 'test-password'))
+      expect(signIn.ok).toBe(false)
+      expect(await readFile(join(profile, 'company-emv-tags.json'), 'utf8')).toBe(JSON.stringify(pack))
+      expect(network).toEqual([])
+      return
+    }
     await panel.getByRole('button', { name: 'Inspect EMV tag DF8101', exact: true }).click()
     const inspector = panel.getByRole('complementary', { name: 'EMV tag definition' })
     await expect(inspector).toContainText('Company-only status')

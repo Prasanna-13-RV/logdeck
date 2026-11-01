@@ -20,6 +20,17 @@ builds; there is intentionally no installation wizard.
 
 ## 1. Create and configure Firebase
 
+Company features default **off** on both website and desktop, even if Firebase
+credentials or a previously downloaded company JSON pack exist. Leave
+`VITE_ENABLE_COMPANY_TAGS=false` (or unset) for offline global definitions only.
+Set it to exactly `true` to enable company sign-in, Settings, cached packs and
+the website administration route. Other values are rejected. Rebuild the desktop
+and redeploy the website after changing this build-time switch. Existing cached
+packs are left untouched while disabled.
+
+The desktop **Official download page** always opens https://logdeck.netlify.app;
+it does not depend on Firebase or update-manifest configuration.
+
 1. Create a Firebase project you control. Register a Web app and obtain its public
    Web API key and project ID.
 2. Enable **Authentication > Sign-in method > Email/Password**. Provision accounts
@@ -39,6 +50,7 @@ builds; there is intentionally no installation wizard.
 Copy [.env.example](../.env.example) to `.env.local` at the project root and set:
 
 ```dotenv
+VITE_ENABLE_COMPANY_TAGS=true
 VITE_FIREBASE_API_KEY=YOUR_PUBLIC_FIREBASE_WEB_API_KEY
 VITE_FIREBASE_PROJECT_ID=your-project-id
 VITE_WINDOWS_DOWNLOAD_URL=
@@ -57,7 +69,7 @@ Do not paste the whole object into a TypeScript file. This app uses Firebase Aut
 and Firestore REST APIs, so `authDomain`, `storageBucket`, `messagingSenderId`,
 `appId` and `measurementId` are not read. Analytics is not enabled. Replace
 example/dummy values with your project's actual public web API key. Keep
-`.env.local` local (it is git-ignored); for Netlify, set the same two variables
+`.env.local` local (it is git-ignored); for Netlify, set the opt-in flag and the same two variables
 in the site's build environment and redeploy.
 
 Both app builds read this configuration. Restart Vite after editing it; rebuild
@@ -208,6 +220,29 @@ skips downloading Electron for the website, bundles the release function, preser
 SPA routes and adds restrictive response headers. Do not deploy `website/dist`
 alone through drag-and-drop: the release endpoint also needs its Netlify Function.
 
+For the **1.0.0** deployment:
+
+1. Commit and push the website changes, package/lockfile version and `version.json`.
+2. Use the repository root as the Netlify base directory (not `website`), build
+   command `npm run build:website`, publish directory `website/dist`, and functions
+   directory `netlify/functions`. Keep build-time dev dependencies enabled.
+3. Keep `VITE_ENABLE_COMPANY_TAGS=false` (the repository default). Firebase
+   variables are not required. Remove any stale `VITE_WINDOWS_DOWNLOAD_URL`
+   override so the website uses verified GitHub release metadata.
+4. Run `npm.cmd run build:website`, `npm.cmd run test:website`, and `npm.cmd test`.
+   Website tests include the production bundle under Netlify's CSP, direct-route
+   reloads, favicon bytes, mobile layout, and unavailable release handling.
+   Local preview simulates response policy; Netlify routing/functions still
+   require the post-deployment checks below.
+5. Deploy from the connected Git repository, then check `/`, `/features`,
+   `/download`, `/admin` (Page not found while company features are off), and
+   `/updates/windows.json`.
+
+The website does not fabricate a Windows download for version 1.0.0. Its download
+page shows the latest verified published GitHub release, which may remain older
+until the `v1.0.0` EXE/checksum release is published. Keep the existing static
+snapshot intact until release preparation generates a new snapshot.
+
 Set `VITE_FIREBASE_API_KEY` and `VITE_FIREBASE_PROJECT_ID` in the Netlify build
 environment when enabling company administration, and add `logdeck.netlify.app`
 to Firebase Auth's authorized domains. These are public client settings, never
@@ -296,12 +331,12 @@ and commit before tagging. Example for the prepared version:
 ```powershell
 git status
 # Review and stage the intended source changes, then commit them.
-git tag v0.1.1
+git tag v1.0.0
 git push origin main
-git push origin v0.1.1
+git push origin v1.0.0
 ```
 
-Use the actual prepared version, not always `0.1.1`. The tag-triggered GitHub Actions
+Use the actual prepared version, not always `1.0.0`. The tag-triggered GitHub Actions
 workflow checks that tag/package/manifest versions match, rebuilds and smoke-tests
 on Windows, and creates a draft with the EXE, checksum and metadata attached before
 publishing it as latest. `GITHUB_TOKEN` receives contents-write permission only in
@@ -309,6 +344,31 @@ the release job. The repository must be public for unauthenticated public downlo
 No personal access token is stored. A failed publication leaves a draft for manual
 inspection; remove/repair that draft before retrying the same tag. The local EXE
 is immediately usable even if you choose not to publish.
+
+### Bash release shortcut
+
+Run from Git Bash on Windows (or Bash with Node/npm/Git available):
+
+```bash
+bash scripts/publish-release.sh --dry-run 1.0.0 "Release LogDeck 1.0.0"
+bash scripts/publish-release.sh 1.0.0 "Release LogDeck 1.0.0"
+```
+
+The commit message is optional. A `v` prefix on the version is accepted. The script
+requires `main` and an `origin` remote, rejects existing local/remote tags, updates
+package/lockfile, `version.json` and the website manifest, runs unit tests plus the
+website build/tests, then runs `git add .`, commits, pushes `main`, creates an
+annotated `v<version>` tag and pushes it. **All non-ignored changes are included**:
+review your worktree first. Dry-run checks the branch/remote/tag without modifying
+files, running builds or publishing anything.
+
+When changing versions, old EXE URLs/checksums are removed from the static preview
+manifest rather than relabeled as new assets. GitHub Actions generates verified
+metadata for its new EXE; Netlify continues reading published GitHub Releases.
+The script does not build the Windows EXE locally or deploy Netlify directly.
+Failures stop immediately; version edits or a completed commit/main push may
+remain, and a failed tag push leaves the local tag. Review the failure before
+retrying; the script never deletes tags or force-pushes.
 
 **Where to upload the EXE:** GitHub Releases in `Prasanna-13-RV/logdeck`, not
 Firebase or Netlify. The tag workflow above is the recommended upload path.
@@ -347,14 +407,26 @@ The old filename registration will not magically follow a moved EXE. Preferences
 company pack cache and indexes remain in the account's app-data folders, so this
 is a no-installer distribution, not a zero-footprint or USB-profile mode.
 
-The portable launcher extracts Electron to an isolated temporary folder on each
-launch. ZIP extraction favors startup time over the smallest possible download;
-the EXE is approximately 162 MB, not a tiny native binary. The final local smoke
-run reached an indexed record in 24.5 seconds including extraction and integration
-status checks on this development machine. This is a measured development result,
-not a cross-machine startup guarantee or a completed performance certification.
-The packaged-runtime test also covers opening another log while already running,
-including a filename containing spaces and Unicode.
+The single EXE uses a custom NSIS launcher (not the default NSIS installer) with
+maximum 7z compression and English Chromium locale files. It extracts Electron
+once into `%LOCALAPPDATA%\LogDeck\portable`, then reuses that runtime. Each cache
+is keyed by the version and payload hash; the complete payload hash is checked
+in its completion marker before reuse. Extraction is staged and serialized so
+simultaneous launches cannot use a partially extracted runtime. No administrator
+rights, installer registry entries or shortcuts are required.
+After closing LogDeck, obsolete cache folders can be deleted; removing the current
+cache causes extraction on the next launch. Settings and log indexes remain separate.
+The launcher displays a native preparation/loading window and hides it after the
+Electron viewer signals that it is visible. The viewer loads before indexing a
+command-line log. Repeat launches skip the full-EXE NSIS CRC scan, matching the
+standard portable target; archive extraction checks and published SHA-256 checksums
+remain. Windows scanning can still delay the loading window before launcher code runs.
+The packaged-runtime test verifies cold and warm launches with no initial log,
+checks the loading window appears and hides, checks that warm startup does not
+rewrite the runtime, and opens a synthetic log
+through SQLite. Both launches also cover opening another log while already running,
+including a filename containing spaces and Unicode. Startup measurements are
+development results, not cross-machine guarantees.
 
 ## 7. Verification
 
