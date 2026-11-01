@@ -381,7 +381,9 @@ export function Website() {
 								</a>
 							) : (
 								<>
-									<button className="primary-button" disabled>
+									<button 
+                  style={{ margin: "1rem" }}
+                  className="primary-button" disabled>
 										Download not published yet
 									</button>
 									<p role="status">

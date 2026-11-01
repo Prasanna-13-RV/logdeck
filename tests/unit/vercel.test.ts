@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import configuration from '../../vercel.json'
+import apiTypescript from '../../api/tsconfig.json'
 import handler from '../../api/windows-release'
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
@@ -17,6 +18,11 @@ const release = {
 }
 
 describe('Vercel hosting', () => {
+  it('compiles the API as CommonJS without changing browser module settings', () => {
+    expect(apiTypescript.extends).toBe('../tsconfig.json')
+    expect(apiTypescript.compilerOptions.module).toBe('CommonJS')
+    expect(apiTypescript.compilerOptions.moduleResolution).toBe('Node')
+  })
   it('builds from the root and keeps API/assets outside the SPA fallback', () => {
     expect(configuration.buildCommand).toBe('npm run build:website')
     expect(configuration.outputDirectory).toBe('website/dist')

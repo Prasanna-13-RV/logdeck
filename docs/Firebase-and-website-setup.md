@@ -39,6 +39,13 @@ Vite's code builds, with an Installed apps entry and uninstaller.
    The release route runs before filesystem lookup so the bundled static
    `windows.json` preview cannot shadow the function. The function uses Vercel's
    Node request/response handler.
+   Local `dev:website` and `preview:website` also serve this verified release
+   endpoint through Vite middleware; GitHub access is required for downloads.
+   The static preview snapshot is not used by these local servers.
+   `api/tsconfig.json` compiles this handler and its imports as CommonJS, matching
+   the package's Node module format without changing Vite/Electron compilation.
+   If an earlier deployment logged "Cannot use import statement outside a
+   module", redeploy the commit containing this file with build cache disabled.
 5. Check `/`, `/features`, `/download`, a direct route reload, `/favicon.ico`,
    and `/updates/windows.json` on the assigned Vercel domain. The security headers
    match the existing production policy.
